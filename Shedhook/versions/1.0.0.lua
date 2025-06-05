@@ -2580,24 +2580,9 @@ local function Update()
         Library.KeybindsList:HandleInput() 
     end
     
-    for _, element in ipairs(Library.SortedElements or {}) do
-        if element and element.HandleInput then
-            element:HandleInput() 
-        end
-    end
-    
-    for _, window in ipairs(Library.Windows or {}) do
-        if window and window.visible and window.HandleInput then
-            window:HandleInput() 
-        end
-    end
 
     if Library.KeybindsList and Library.KeybindsList.visible then
         Library.KeybindsList:UpdatePosition() 
-    end
-    
-    if Library.Notifications then
-        Library.Notifications:UpdateAll() 
     end
     
     for _, keybind in ipairs(Library.AllKeybinds or {}) do
@@ -2634,22 +2619,7 @@ local function Render()
     if Library.KeybindsList then
         Library.KeybindsList:Render() 
     end
-    
-    for _, window in ipairs(Library.Windows or {}) do
-        if window and window.visible and window.Render then
-            window:Render() 
-        end
-    end
-
-    for _, element in ipairs(Library.SortedElements or {}) do
-        if element and element.RenderPopup and MainWindow.visible then
-            element:RenderPopup()
-        end
-        
-        if element and element.colorPicker and element.colorPicker.RenderPopup then
-            element.colorPicker:RenderPopup()
-        end
-    end
+   
 
     if Library.Watermark then
         Library.Watermark:Render()
