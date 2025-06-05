@@ -1,3 +1,4 @@
+collectgarbage("collect")
 local Library = _G.UILIB
 local UI = Library.Init({
     Title = "shedhook fallen survival",
