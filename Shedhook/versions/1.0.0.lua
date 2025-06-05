@@ -1,4 +1,38 @@
 collectgarbage("collect")
+
+-- CRASH MITIGATION: Add error handling and initialization control
+local ScriptState = {
+    initialized = false,
+    uiCreated = false,
+    errorCount = 0,
+    maxErrors = 10,
+    lastError = 0
+}
+
+local function SafeExecute(func, errorMsg)
+    local success, result = pcall(func)
+    if not success then
+        ScriptState.errorCount = ScriptState.errorCount + 1
+        ScriptState.lastError = utility.get_tickcount()
+        utility.log((errorMsg or "Error") .. ": " .. tostring(result))
+        
+        if ScriptState.errorCount > ScriptState.maxErrors then
+            utility.log("Too many errors, disabling script")
+            return false
+        end
+    end
+    return success, result
+end
+
+-- Memory management
+local frameCount = 0
+local function ManageMemory()
+    frameCount = frameCount + 1
+    if frameCount % 500 == 0 then
+        collectgarbage("collect")
+    end
+end
+
 local Library = _G.UILIB
 local UI = Library.Init({
     Title = "shedhook fallen survival",
