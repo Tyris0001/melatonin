@@ -1,1 +1,4 @@
-
+04/06/2025 - Update
+- Implemented Aimbot and Prediction
+- Implemented better theme customization
+- Implemented notify on mod-join
