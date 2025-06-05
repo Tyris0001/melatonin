@@ -44,6 +44,36 @@ local UI = Library.Init({
     }
 })
 
+local InitializationQueue = {
+    currentStep = 0,
+    steps = {},
+    completed = false
+}
+
+local function QueueInitStep(stepFunc, stepName)
+    table.insert(InitializationQueue.steps, {func = stepFunc, name = stepName})
+end
+
+local function ProcessInitQueue()
+    if InitializationQueue.completed then return end
+    
+    local currentTime = utility.get_tickcount()
+    if currentTime - (InitializationQueue.lastStep or 0) < 100 then return end -- Delay between steps
+    
+    InitializationQueue.currentStep = InitializationQueue.currentStep + 1
+    local step = InitializationQueue.steps[InitializationQueue.currentStep]
+    
+    if step then
+        SafeExecute(step.func, "Initialization step: " .. step.name)
+        InitializationQueue.lastStep = currentTime
+        utility.log("Initialized: " .. step.name)
+    else
+        InitializationQueue.completed = true
+        ScriptState.initialized = true
+        utility.log("Script initialization completed")
+    end
+end
+
 local MainWindow = Library.Window({
     Title = "shedhook",
     X = 100,
@@ -321,120 +351,169 @@ local ESPConfig = {
         BodyBag = {255, 0, 0, 255}
     }
 }
+QueueInitStep(function()
+    MainWindow = Library.Window({
+        Title = "shedhook",
+        X = 100,
+        Y = 100,
+        Width = 630,
+        Height = 650
+    })
+end, "Main Window")
 
-tabs.Legit = MainWindow:AddTab("Aimbot")
-tabs.Visuals = MainWindow:AddTab("Visuals")
-tabs.Entities = MainWindow:AddTab("Entities")
-tabs.Player = MainWindow:AddTab("Players")
-tabs.Settings = MainWindow:AddTab("Settings")
+QueueInitStep(function()
+    elements = {}
+    sections = {}
+    tabs = {}
+    multiSections = {}
+end, "Variables")
 
-sections.Aimbot = tabs.Legit:AddSection("Aimbot", 10, 60, 300, 530)
-sections.Prediction = tabs.Legit:AddMultiSection("Prediction", {"General", "Spear", "Bow", "Crossbow", "Nailgun"}, 320, 60, 300, 530)
+QueueInitStep(function()
+    tabs.Legit = MainWindow:AddTab("Aimbot")
+    tabs.Visuals = MainWindow:AddTab("Visuals")
+end, "Basic Tabs")
 
-elements.aimbotEnabled = Toggle:new("Enabled", function(state)
-    AimbotConfig.enabled = state
-end, AimbotConfig.enabled, "aimbot_enabled")
+QueueInitStep(function()
+    tabs.Entities = MainWindow:AddTab("Entities")
+    tabs.Player = MainWindow:AddTab("Players")
+    tabs.Settings = MainWindow:AddTab("Settings")
+end, "Remaining Tabs")
 
-elements.aimbotEnabled.keybind = elements.aimbotEnabled:AddKeybind(AimbotConfig.keybind.key, "Hold")
-sections.Aimbot:AddElement(elements.aimbotEnabled)
+QueueInitStep(function()
+    sections.Aimbot = tabs.Legit:AddSection("Aimbot", 10, 60, 300, 530)
+    sections.Prediction = tabs.Legit:AddMultiSection("Prediction", {"General", "Spear", "Bow", "Crossbow", "Nailgun"}, 320, 60, 300, 530)
+end, "Aimbot Sections")
 
-elements.aimbotMode = Dropdown:new("Mode", {"mouse", "silent"}, function(selected)
-    AimbotConfig.mode = selected
-end, AimbotConfig.mode, "aimbot_mode")
-sections.Aimbot:AddElement(elements.aimbotMode)
+QueueInitStep(function()
+    elements.aimbotEnabled = Toggle:new("Enabled", function(state)
+        AimbotConfig.enabled = state
+    end, AimbotConfig.enabled, "aimbot_enabled")
+    elements.aimbotEnabled.keybind = elements.aimbotEnabled:AddKeybind(AimbotConfig.keybind.key, "Hold")
+    sections.Aimbot:AddElement(elements.aimbotEnabled)
+end, "Aimbot Toggle")
 
-elements.aimbotVisible = Toggle:new("Visible Only", function(state)
-    AimbotConfig.visible = state
-end, AimbotConfig.visible, "aimbot_visible")
-sections.Aimbot:AddElement(elements.aimbotVisible)
+QueueInitStep(function()
+    elements.aimbotMode = Dropdown:new("Mode", {"mouse", "silent"}, function(selected)
+        AimbotConfig.mode = selected
+    end, AimbotConfig.mode, "aimbot_mode")
+    sections.Aimbot:AddElement(elements.aimbotMode)
+    
+    elements.aimbotVisible = Toggle:new("Visible Only", function(state)
+        AimbotConfig.visible = state
+    end, AimbotConfig.visible, "aimbot_visible")
+    sections.Aimbot:AddElement(elements.aimbotVisible)
+end, "Aimbot Mode & Visible")
 
-elements.aimbotTargets = MultiSelectDropdown:new("Target Types", {"Players", "Soldiers", "Animals", "Whitelisteds"}, function(selected)
-    AimbotConfig.targets = selected
-end, AimbotConfig.targets, "aimbot_targets")
-sections.Aimbot:AddElement(elements.aimbotTargets)
+QueueInitStep(function()
+    elements.aimbotTargets = MultiSelectDropdown:new("Target Types", {"Players", "Soldiers", "Animals", "Whitelisteds"}, function(selected)
+        AimbotConfig.targets = selected
+    end, AimbotConfig.targets, "aimbot_targets")
+    sections.Aimbot:AddElement(elements.aimbotTargets)
+    
+    elements.aimbotSticky = Toggle:new("Sticky Target", function(state)
+        AimbotConfig.sticky = state
+    end, AimbotConfig.sticky, "aimbot_sticky")
+    sections.Aimbot:AddElement(elements.aimbotSticky)
+end, "Aimbot Targets")
 
-elements.aimbotSticky = Toggle:new("Sticky Target", function(state)
-    AimbotConfig.sticky = state
-end, AimbotConfig.sticky, "aimbot_sticky")
-sections.Aimbot:AddElement(elements.aimbotSticky)
+QueueInitStep(function()
+    elements.aimbotTargetSelection = Dropdown:new("Target Selection", {"Closest to crosshair", "Closest to Player", "Lowest HP"}, function(selected)
+        AimbotConfig.targetSelection = selected
+    end, AimbotConfig.targetSelection, "aimbot_target_selection")
+    sections.Aimbot:AddElement(elements.aimbotTargetSelection)
+end, "Target Selection")
 
-elements.aimbotTargetSelection = Dropdown:new("Target Selection", {"Closest to crosshair", "Closest to Player", "Lowest HP"}, function(selected)
-    AimbotConfig.targetSelection = selected
-end, AimbotConfig.targetSelection, "aimbot_target_selection")
-sections.Aimbot:AddElement(elements.aimbotTargetSelection)
+QueueInitStep(function()
+    elements.aimbotHitboxes = MultiSelectDropdown:new("Hitboxes", {
+        "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", 
+        "RightUpperArm", "RightLowerArm", "LeftUpperLeg", "LeftLowerLeg", 
+        "RightUpperLeg", "RightLowerLeg", "LeftHand", "RightHand", "LeftFoot", "RightFoot"
+    }, function(selected)
+        AimbotConfig.hitboxes = selected
+    end, AimbotConfig.hitboxes, "aimbot_hitboxes")
+    sections.Aimbot:AddElement(elements.aimbotHitboxes)
+end, "Aimbot Hitboxes")
 
-elements.aimbotHitboxes = MultiSelectDropdown:new("Hitboxes", {
-    "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", 
-    "RightUpperArm", "RightLowerArm", "LeftUpperLeg", "LeftLowerLeg", 
-    "RightUpperLeg", "RightLowerLeg", "LeftHand", "RightHand", "LeftFoot", "RightFoot"
-}, function(selected)
-    AimbotConfig.hitboxes = selected
-end, AimbotConfig.hitboxes, "aimbot_hitboxes")
-sections.Aimbot:AddElement(elements.aimbotHitboxes)
+QueueInitStep(function()
+    elements.aimbotFOV = Slider:new("FOV", 0, 1000, AimbotConfig.fov, function(value)
+        AimbotConfig.fov = value
+    end, "aimbot_fov")
+    sections.Aimbot:AddElement(elements.aimbotFOV)
+end, "FOV Slider")
 
-elements.aimbotFOV = Slider:new("FOV", 0, 1000, AimbotConfig.fov, function(value)
-    AimbotConfig.fov = value
-end, "aimbot_fov")
-sections.Aimbot:AddElement(elements.aimbotFOV)
+QueueInitStep(function()
+    elements.aimbotVisualizeFOV = Toggle:new("Visualize FOV", function(state)
+        AimbotConfig.visualizeFOV = state
+    end, AimbotConfig.visualizeFOV, "aimbot_visualize_fov")
+    elements.aimbotVisualizeFOV:AddColorPicker("FOV Color", function(color)
+        AimbotConfig.visualizeFOVColor = color
+    end, AimbotConfig.visualizeFOVColor, "aimbot_visualize_fov_color")
+    sections.Aimbot:AddElement(elements.aimbotVisualizeFOV)
+end, "FOV Visualization")
 
-elements.aimbotVisualizeFOV = Toggle:new("Visualize FOV", function(state)
-    AimbotConfig.visualizeFOV = state
-end, AimbotConfig.visualizeFOV, "aimbot_visualize_fov")
-elements.aimbotVisualizeFOV:AddColorPicker("FOV Color", function(color)
-    AimbotConfig.visualizeFOVColor = color
-end, AimbotConfig.visualizeFOVColor, "aimbot_visualize_fov_color")
-sections.Aimbot:AddElement(elements.aimbotVisualizeFOV)
+QueueInitStep(function()
+    elements.aimbotVisualizeFOVFilled = Toggle:new("FOV Filled", function(state)
+        AimbotConfig.fovCircleFilled = state
+    end, AimbotConfig.fovCircleFilled, "aimbot_visualize_fov_filled")
+    elements.aimbotVisualizeFOVFilled:AddColorPicker("FOV Fill Color", function(color)
+        AimbotConfig.fovCircleFilledColor = color
+    end, AimbotConfig.fovCircleFilledColor, "aimbot_visualize_fov_filled_color")
+    sections.Aimbot:AddElement(elements.aimbotVisualizeFOVFilled)
+end, "FOV Filled")
 
-elements.aimbotVisualizeFOVFilled = Toggle:new("FOV Filled", function(state)
-    AimbotConfig.fovCircleFilled = state
-end, AimbotConfig.fovCircleFilled, "aimbot_visualize_fov_filled")
-elements.aimbotVisualizeFOVFilled:AddColorPicker("FOV Fill Color", function(color)
-    AimbotConfig.fovCircleFilledColor = color
-end, AimbotConfig.fovCircleFilledColor, "aimbot_visualize_fov_filled_color")
-sections.Aimbot:AddElement(elements.aimbotVisualizeFOVFilled)
+QueueInitStep(function()
+    elements.aimbotMouseMovement = Dropdown:new("Mouse Movement", {"Linear", "Exponential", "Curved"}, function(selected)
+        AimbotConfig.mouseMovement = selected
+    end, AimbotConfig.mouseMovement, "aimbot_mouse_movement")
+    sections.Aimbot:AddElement(elements.aimbotMouseMovement)
+    
+    elements.aimbotSpeed = Slider:new("Speed", 0, 100, AimbotConfig.speed, function(value)
+        AimbotConfig.speed = value
+    end, "aimbot_speed")
+    sections.Aimbot:AddElement(elements.aimbotSpeed)
+end, "Mouse Movement")
 
-elements.aimbotMouseMovement = Dropdown:new("Mouse Movement", {"Linear", "Exponential", "Curved"}, function(selected)
-    AimbotConfig.mouseMovement = selected
-end, AimbotConfig.mouseMovement, "aimbot_mouse_movement")
-sections.Aimbot:AddElement(elements.aimbotMouseMovement)
+QueueInitStep(function()
+    elements.aimbotSmoothingEnabled = Toggle:new("Enable Smoothing", function(state)
+        AimbotConfig.smoothingEnabled = state
+    end, AimbotConfig.smoothingEnabled, "aimbot_smoothing_enabled")
+    sections.Aimbot:AddElement(elements.aimbotSmoothingEnabled)
+    
+    elements.aimbotSmoothing = Slider:new("Smoothing", 1, 50, AimbotConfig.smoothing, function(value)
+        AimbotConfig.smoothing = value
+    end, "aimbot_smoothing")
+    sections.Aimbot:AddElement(elements.aimbotSmoothing)
+end, "Smoothing")
 
-elements.aimbotSpeed = Slider:new("Speed", 0, 100, AimbotConfig.speed, function(value)
-    AimbotConfig.speed = value
-end, "aimbot_speed")
-sections.Aimbot:AddElement(elements.aimbotSpeed)
+QueueInitStep(function()
+    elements.aimbotMaxDistance = Slider:new("Max Distance", 100, 5000, AimbotConfig.maxDistance, function(value)
+        AimbotConfig.maxDistance = value
+    end, "aimbot_max_distance")
+    sections.Aimbot:AddElement(elements.aimbotMaxDistance)
+end, "Max Distance")
 
-elements.aimbotSmoothingEnabled = Toggle:new("Enable Smoothing", function(state)
-    AimbotConfig.smoothingEnabled = state
-end, AimbotConfig.smoothingEnabled, "aimbot_smoothing_enabled")
-sections.Aimbot:AddElement(elements.aimbotSmoothingEnabled)
+QueueInitStep(function()
+    elements.aimbotVisualizeTarget = Toggle:new("Visualize Target", function(state)
+        AimbotConfig.visualizeTarget = state
+    end, AimbotConfig.visualizeTarget, "aimbot_visualize_target")
+    elements.aimbotVisualizeTarget:AddColorPicker("Target Color", function(color)
+        AimbotConfig.targetColor = color
+    end, AimbotConfig.targetColor, "aimbot_target_color")
+    sections.Aimbot:AddElement(elements.aimbotVisualizeTarget)
+end, "Target Visualization")
 
-elements.aimbotSmoothing = Slider:new("Smoothing", 1, 50, AimbotConfig.smoothing, function(value)
-    AimbotConfig.smoothing = value
-end, "aimbot_smoothing")
-sections.Aimbot:AddElement(elements.aimbotSmoothing)
+QueueInitStep(function()
+    elements.showHitchance = Toggle:new("Show Hitchance", function(state)
+        AimbotConfig.showHitchance = state
+    end, AimbotConfig.showHitchance, "show_hitchance")
+    sections.Aimbot:AddElement(elements.showHitchance)
+end, "Hitchance")
 
-elements.aimbotMaxDistance = Slider:new("Max Distance", 100, 5000, AimbotConfig.maxDistance, function(value)
-    AimbotConfig.maxDistance = value
-end, "aimbot_max_distance")
-sections.Aimbot:AddElement(elements.aimbotMaxDistance)
-
-elements.aimbotVisualizeTarget = Toggle:new("Visualize Target", function(state)
-    AimbotConfig.visualizeTarget = state
-end, AimbotConfig.visualizeTarget, "aimbot_visualize_target")
-elements.aimbotVisualizeTarget:AddColorPicker("Target Color", function(color)
-    AimbotConfig.targetColor = color
-end, AimbotConfig.targetColor, "aimbot_target_color")
-sections.Aimbot:AddElement(elements.aimbotVisualizeTarget)
-
--- Hitchance settings
-elements.showHitchance = Toggle:new("Show Hitchance", function(state)
-    AimbotConfig.showHitchance = state
-end, AimbotConfig.showHitchance, "show_hitchance")
-sections.Aimbot:AddElement(elements.showHitchance)
-
-
-local weaponIndex = 1
-for _, weapon in ipairs({"General", "Spear", "Bow", "Crossbow", "Nailgun"}) do
+QueueInitStep(function()
+    -- General weapon prediction
+    local weapon = "General"
+    local weaponIndex = 1
+    
     elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
         AimbotConfig.weapons[weapon].predictionEnabled = state
     end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
@@ -444,7 +523,12 @@ for _, weapon in ipairs({"General", "Spear", "Bow", "Crossbow", "Nailgun"}) do
         AimbotConfig.weapons[weapon].predictionMethod = selected
     end, AimbotConfig.weapons[weapon].predictionMethod, string.format("%s_prediction_method", weapon))
     sections.Prediction:AddElement(elements[weapon.."_predictionMethod"], weaponIndex)
+end, "General Weapon Prediction 1")
 
+QueueInitStep(function()
+    local weapon = "General"
+    local weaponIndex = 1
+    
     elements[weapon.."_predictionStrength"] = Slider:new("Prediction Strength", 0.1, 5.0, AimbotConfig.weapons[weapon].predictionStrength, function(value)
         AimbotConfig.weapons[weapon].predictionStrength = value
     end, string.format("%s_prediction_strength", weapon))
@@ -454,7 +538,12 @@ for _, weapon in ipairs({"General", "Spear", "Bow", "Crossbow", "Nailgun"}) do
         AimbotConfig.weapons[weapon].bulletVelocity = value
     end, string.format("%s_bullet_velocity", weapon))
     sections.Prediction:AddElement(elements[weapon.."_bulletVelocity"], weaponIndex)
+end, "General Weapon Prediction 2")
 
+QueueInitStep(function()
+    local weapon = "General"
+    local weaponIndex = 1
+    
     elements[weapon.."_gravity"] = Slider:new("Gravity", 0, 300, AimbotConfig.weapons[weapon].gravity, function(value)
         AimbotConfig.weapons[weapon].gravity = value
     end, string.format("%s_gravity", weapon))
@@ -464,7 +553,12 @@ for _, weapon in ipairs({"General", "Spear", "Bow", "Crossbow", "Nailgun"}) do
         AimbotConfig.weapons[weapon].bulletDrop = value
     end, string.format("%s_bullet_drop", weapon))
     sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
+end, "General Weapon Prediction 3")
 
+QueueInitStep(function()
+    local weapon = "General"
+    local weaponIndex = 1
+    
     elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
         AimbotConfig.weapons[weapon].visualizePrediction = state
     end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
@@ -479,575 +573,923 @@ for _, weapon in ipairs({"General", "Spear", "Bow", "Crossbow", "Nailgun"}) do
         AimbotConfig.weapons[weapon].predictionColor = color
     end, AimbotConfig.weapons[weapon].predictionColor)
     sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
+end, "General Weapon Prediction 4")
+
+QueueInitStep(function()
+    -- Spear weapon prediction
+    local weapon = "Spear"
+    local weaponIndex = 2
     
-    weaponIndex = weaponIndex + 1
-end
+    elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
+        AimbotConfig.weapons[weapon].predictionEnabled = state
+    end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionEnabled"], weaponIndex)
 
--- ESP Section - Converted from MultiSection to regular Section with inline colorpickers
-sections.ESPPreview = tabs.Visuals:AddESPPreview("ESP Preview", 10, 60, 250, 350)
-sections.ESPSettings = tabs.Visuals:AddSection("ESP Settings", 270, 60, 350, 530)
+    elements[weapon.."_predictionMethod"] = Dropdown:new("Prediction Method", {"Regular", "Experimental"}, function(selected)
+        AimbotConfig.weapons[weapon].predictionMethod = selected
+    end, AimbotConfig.weapons[weapon].predictionMethod, string.format("%s_prediction_method", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionMethod"], weaponIndex)
 
-elements.enableESP = Toggle:new("Enable ESP", function(state)
-    Library.ESP.Enabled = state
-end, Library.ESP.Enabled, "esp_enabled")
-sections.ESPSettings:AddElement(elements.enableESP)
+    elements[weapon.."_predictionStrength"] = Slider:new("Prediction Strength", 0.1, 5.0, AimbotConfig.weapons[weapon].predictionStrength, function(value)
+        AimbotConfig.weapons[weapon].predictionStrength = value
+    end, string.format("%s_prediction_strength", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionStrength"], weaponIndex)
+end, "Spear Weapon Prediction 1")
 
-elements.boxToggle = Toggle:new("Box ESP", function(state)
-    Library.ESP.Show2DBox = state
-    Library.ESPPreview.Components.Box = state
-end, Library.ESP.Show2DBox, "esp_box")
-elements.boxToggle:AddColorPicker("Box Color", function(color)
-    Library.ESP.Colors.Box = color
-    Library.ESPPreview.Colors.Box = color
-end, Library.ESP.Colors.Box)
-sections.ESPSettings:AddElement(elements.boxToggle)
+QueueInitStep(function()
+    local weapon = "Spear"
+    local weaponIndex = 2
+    
+    elements[weapon.."_bulletVelocity"] = Slider:new("Bullet Velocity", 200, 3000, AimbotConfig.weapons[weapon].bulletVelocity, function(value)
+        AimbotConfig.weapons[weapon].bulletVelocity = value
+    end, string.format("%s_bullet_velocity", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_bulletVelocity"], weaponIndex)
 
-elements.healthBarToggle = Toggle:new("Health Bar", function(state)
-    Library.ESP.ShowHealth = state
-    Library.ESPPreview.Components.HealthBar = state
-end, Library.ESP.ShowHealth, "esp_healthbar")
-sections.ESPSettings:AddElement(elements.healthBarToggle)
+    elements[weapon.."_gravity"] = Slider:new("Gravity", 0, 300, AimbotConfig.weapons[weapon].gravity, function(value)
+        AimbotConfig.weapons[weapon].gravity = value
+    end, string.format("%s_gravity", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_gravity"], weaponIndex)
 
-elements.nameToggle = Toggle:new("Name ESP", function(state)
-    Library.ESP.ShowName = state
-    Library.ESPPreview.Components.Name = state
-end, Library.ESP.ShowName, "esp_name")
-elements.nameToggle:AddColorPicker("Name Color", function(color)
-    Library.ESP.Colors.Name = color
-    Library.ESPPreview.Colors.Name = color
-end, Library.ESP.Colors.Name)
-sections.ESPSettings:AddElement(elements.nameToggle)
+    elements[weapon.."_bulletDrop"] = Slider:new("Bullet Drop", 0.0, 30.0, AimbotConfig.weapons[weapon].bulletDrop, function(value)
+        AimbotConfig.weapons[weapon].bulletDrop = value
+    end, string.format("%s_bullet_drop", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
+end, "Spear Weapon Prediction 2")
 
-elements.showTagsToggle = Toggle:new("Show Tags", function(state)
-    Library.ESP.ShowTags = state
-end, Library.ESP.ShowTags, "esp_show_tags")
-sections.ESPSettings:AddElement(elements.showTagsToggle)
+QueueInitStep(function()
+    local weapon = "Spear"
+    local weaponIndex = 2
+    
+    elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
+        AimbotConfig.weapons[weapon].visualizePrediction = state
+    end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_visualizePrediction"], weaponIndex)
 
-elements.distanceToggle = Toggle:new("Distance ESP", function(state)
-    Library.ESP.ShowDistance = state
-    Library.ESPPreview.Components.Distance = state
-end, Library.ESP.ShowDistance, "esp_distance")
-elements.distanceToggle:AddColorPicker("Distance Color", function(color)
-    Library.ESP.Colors.Distance = color
-    Library.ESPPreview.Colors.Distance = color
-end, Library.ESP.Colors.Distance)
-sections.ESPSettings:AddElement(elements.distanceToggle)
+    elements[weapon.."_predictionVisualizationType"] = Dropdown:new("Visualization Type", {"Line", "Circle", "Dot"}, function(selected)
+        AimbotConfig.weapons[weapon].predictionVisualizationType = selected
+    end, AimbotConfig.weapons[weapon].predictionVisualizationType, string.format("%s_prediction_visualization_type", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionVisualizationType"], weaponIndex)
 
-elements.weaponToggle = Toggle:new("Weapon ESP", function(state)
-    Library.ESP.ShowWeapon = state
-    Library.ESPPreview.Components.Weapon = state
-end, Library.ESP.ShowWeapon, "esp_weapon")
-elements.weaponToggle:AddColorPicker("Weapon Color", function(color)
-    Library.ESP.Colors.Weapon = color
-    Library.ESPPreview.Colors.Weapon = color
-end, Library.ESP.Colors.Weapon)
-sections.ESPSettings:AddElement(elements.weaponToggle)
+    elements[weapon.."_predictionColor"] = ColorPicker:new("Prediction Color", function(color)
+        AimbotConfig.weapons[weapon].predictionColor = color
+    end, AimbotConfig.weapons[weapon].predictionColor)
+    sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
+end, "Spear Weapon Prediction 3")
 
-elements.skeletonToggle = Toggle:new("Skeleton ESP", function(state)
-    Library.ESP.ShowSkeleton = state
-    Library.ESPPreview.Components.Skeleton = state
-end, Library.ESP.ShowSkeleton, "esp_skeleton")
-elements.skeletonToggle:AddColorPicker("Skeleton Color", function(color)
-    Library.ESP.Colors.Skeleton = color
-    Library.ESPPreview.Colors.Skeleton = color
-end, Library.ESP.Colors.Skeleton)
-sections.ESPSettings:AddElement(elements.skeletonToggle)
+QueueInitStep(function()
+    -- Bow weapon prediction
+    local weapon = "Bow"
+    local weaponIndex = 3
+    
+    elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
+        AimbotConfig.weapons[weapon].predictionEnabled = state
+    end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionEnabled"], weaponIndex)
 
-elements.flagsToggle = Toggle:new("Flags ESP", function(state)
-    Library.ESP.ShowFlags = state
-    Library.ESPPreview.Components.Flags = state
-end, Library.ESP.ShowFlags, "esp_flags")
-elements.flagsToggle:AddColorPicker("Flags Color", function(color)
-    Library.ESP.Colors.Flags = color
-    Library.ESPPreview.Colors.Flags = color
-end, Library.ESP.Colors.Flags)
-sections.ESPSettings:AddElement(elements.flagsToggle)
+    elements[weapon.."_predictionMethod"] = Dropdown:new("Prediction Method", {"Regular", "Experimental"}, function(selected)
+        AimbotConfig.weapons[weapon].predictionMethod = selected
+    end, AimbotConfig.weapons[weapon].predictionMethod, string.format("%s_prediction_method", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionMethod"], weaponIndex)
 
-elements.onlyEnemiesToggle = Toggle:new("Only Enemies", function(state)
-    Library.ESP.OnlyEnemies = state
-end, Library.ESP.OnlyEnemies, "esp_only_enemies")
-sections.ESPSettings:AddElement(elements.onlyEnemiesToggle)
+    elements[weapon.."_predictionStrength"] = Slider:new("Prediction Strength", 0.1, 5.0, AimbotConfig.weapons[weapon].predictionStrength, function(value)
+        AimbotConfig.weapons[weapon].predictionStrength = value
+    end, string.format("%s_prediction_strength", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionStrength"], weaponIndex)
+end, "Bow Weapon Prediction 1")
 
-elements.enemyColorPicker = ColorPicker:new("Enemy Color", function(color)
-    Library.ESP.Colors.Enemy = color
-end, Library.ESP.Colors.Enemy)
-sections.ESPSettings:AddElement(elements.enemyColorPicker)
+QueueInitStep(function()
+    local weapon = "Bow"
+    local weaponIndex = 3
+    
+    elements[weapon.."_bulletVelocity"] = Slider:new("Bullet Velocity", 200, 3000, AimbotConfig.weapons[weapon].bulletVelocity, function(value)
+        AimbotConfig.weapons[weapon].bulletVelocity = value
+    end, string.format("%s_bullet_velocity", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_bulletVelocity"], weaponIndex)
 
-elements.friendlyColorPicker = ColorPicker:new("Friendly Color", function(color)
-    Library.ESP.Colors.Friendly = color
-end, Library.ESP.Colors.Friendly)
-sections.ESPSettings:AddElement(elements.friendlyColorPicker)
+    elements[weapon.."_gravity"] = Slider:new("Gravity", 0, 300, AimbotConfig.weapons[weapon].gravity, function(value)
+        AimbotConfig.weapons[weapon].gravity = value
+    end, string.format("%s_gravity", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_gravity"], weaponIndex)
 
-elements.maxDistanceSlider = Slider:new("Max Distance", 100, 20000, Library.ESP.MaxDistance, function(value)
-    Library.ESP.MaxDistance = value
-end, "esp_max_distance")
-sections.ESPSettings:AddElement(elements.maxDistanceSlider)
+    elements[weapon.."_bulletDrop"] = Slider:new("Bullet Drop", 0.0, 30.0, AimbotConfig.weapons[weapon].bulletDrop, function(value)
+        AimbotConfig.weapons[weapon].bulletDrop = value
+    end, string.format("%s_bullet_drop", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
+end, "Bow Weapon Prediction 2")
 
-sections.ESPMain = tabs.Entities:AddSection("ESP Main Controls", 10, 60, 300, 150)
+QueueInitStep(function()
+    local weapon = "Bow"
+    local weaponIndex = 3
+    
+    elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
+        AimbotConfig.weapons[weapon].visualizePrediction = state
+    end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_visualizePrediction"], weaponIndex)
 
-local function isItemSelected(itemName, selectedArray)
-    for _, selected in ipairs(selectedArray) do
-        if string.find(itemName:lower(), selected:lower()) then
-            return true
-        end
+    elements[weapon.."_predictionVisualizationType"] = Dropdown:new("Visualization Type", {"Line", "Circle", "Dot"}, function(selected)
+        AimbotConfig.weapons[weapon].predictionVisualizationType = selected
+    end, AimbotConfig.weapons[weapon].predictionVisualizationType, string.format("%s_prediction_visualization_type", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionVisualizationType"], weaponIndex)
+
+    elements[weapon.."_predictionColor"] = ColorPicker:new("Prediction Color", function(color)
+        AimbotConfig.weapons[weapon].predictionColor = color
+    end, AimbotConfig.weapons[weapon].predictionColor)
+    sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
+end, "Bow Weapon Prediction 3")
+
+QueueInitStep(function()
+    -- Crossbow weapon prediction
+    local weapon = "Crossbow"
+    local weaponIndex = 4
+    
+    elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
+        AimbotConfig.weapons[weapon].predictionEnabled = state
+    end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionEnabled"], weaponIndex)
+
+    elements[weapon.."_predictionMethod"] = Dropdown:new("Prediction Method", {"Regular", "Experimental"}, function(selected)
+        AimbotConfig.weapons[weapon].predictionMethod = selected
+    end, AimbotConfig.weapons[weapon].predictionMethod, string.format("%s_prediction_method", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionMethod"], weaponIndex)
+
+    elements[weapon.."_predictionStrength"] = Slider:new("Prediction Strength", 0.1, 5.0, AimbotConfig.weapons[weapon].predictionStrength, function(value)
+        AimbotConfig.weapons[weapon].predictionStrength = value
+    end, string.format("%s_prediction_strength", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionStrength"], weaponIndex)
+end, "Crossbow Weapon Prediction 1")
+
+QueueInitStep(function()
+    local weapon = "Crossbow"
+    local weaponIndex = 4
+    
+    elements[weapon.."_bulletVelocity"] = Slider:new("Bullet Velocity", 200, 3000, AimbotConfig.weapons[weapon].bulletVelocity, function(value)
+        AimbotConfig.weapons[weapon].bulletVelocity = value
+    end, string.format("%s_bullet_velocity", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_bulletVelocity"], weaponIndex)
+
+    elements[weapon.."_gravity"] = Slider:new("Gravity", 0, 300, AimbotConfig.weapons[weapon].gravity, function(value)
+        AimbotConfig.weapons[weapon].gravity = value
+    end, string.format("%s_gravity", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_gravity"], weaponIndex)
+
+    elements[weapon.."_bulletDrop"] = Slider:new("Bullet Drop", 0.0, 30.0, AimbotConfig.weapons[weapon].bulletDrop, function(value)
+        AimbotConfig.weapons[weapon].bulletDrop = value
+    end, string.format("%s_bullet_drop", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
+end, "Crossbow Weapon Prediction 2")
+
+QueueInitStep(function()
+    local weapon = "Crossbow"
+    local weaponIndex = 4
+    
+    elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
+        AimbotConfig.weapons[weapon].visualizePrediction = state
+    end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_visualizePrediction"], weaponIndex)
+
+    elements[weapon.."_predictionVisualizationType"] = Dropdown:new("Visualization Type", {"Line", "Circle", "Dot"}, function(selected)
+        AimbotConfig.weapons[weapon].predictionVisualizationType = selected
+    end, AimbotConfig.weapons[weapon].predictionVisualizationType, string.format("%s_prediction_visualization_type", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionVisualizationType"], weaponIndex)
+
+    elements[weapon.."_predictionColor"] = ColorPicker:new("Prediction Color", function(color)
+        AimbotConfig.weapons[weapon].predictionColor = color
+    end, AimbotConfig.weapons[weapon].predictionColor)
+    sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
+end, "Crossbow Weapon Prediction 3")
+
+QueueInitStep(function()
+    -- Nailgun weapon prediction
+    local weapon = "Nailgun"
+    local weaponIndex = 5
+    
+    elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
+        AimbotConfig.weapons[weapon].predictionEnabled = state
+    end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionEnabled"], weaponIndex)
+
+    elements[weapon.."_predictionMethod"] = Dropdown:new("Prediction Method", {"Regular", "Experimental"}, function(selected)
+        AimbotConfig.weapons[weapon].predictionMethod = selected
+    end, AimbotConfig.weapons[weapon].predictionMethod, string.format("%s_prediction_method", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionMethod"], weaponIndex)
+
+    elements[weapon.."_predictionStrength"] = Slider:new("Prediction Strength", 0.1, 5.0, AimbotConfig.weapons[weapon].predictionStrength, function(value)
+        AimbotConfig.weapons[weapon].predictionStrength = value
+    end, string.format("%s_prediction_strength", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionStrength"], weaponIndex)
+end, "Nailgun Weapon Prediction 1")
+
+QueueInitStep(function()
+    local weapon = "Nailgun"
+    local weaponIndex = 5
+    
+    elements[weapon.."_bulletVelocity"] = Slider:new("Bullet Velocity", 200, 3000, AimbotConfig.weapons[weapon].bulletVelocity, function(value)
+        AimbotConfig.weapons[weapon].bulletVelocity = value
+    end, string.format("%s_bullet_velocity", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_bulletVelocity"], weaponIndex)
+
+    elements[weapon.."_gravity"] = Slider:new("Gravity", 0, 300, AimbotConfig.weapons[weapon].gravity, function(value)
+        AimbotConfig.weapons[weapon].gravity = value
+    end, string.format("%s_gravity", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_gravity"], weaponIndex)
+
+    elements[weapon.."_bulletDrop"] = Slider:new("Bullet Drop", 0.0, 30.0, AimbotConfig.weapons[weapon].bulletDrop, function(value)
+        AimbotConfig.weapons[weapon].bulletDrop = value
+    end, string.format("%s_bullet_drop", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
+end, "Nailgun Weapon Prediction 2")
+
+QueueInitStep(function()
+    local weapon = "Nailgun"
+    local weaponIndex = 5
+    
+    elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
+        AimbotConfig.weapons[weapon].visualizePrediction = state
+    end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_visualizePrediction"], weaponIndex)
+
+    elements[weapon.."_predictionVisualizationType"] = Dropdown:new("Visualization Type", {"Line", "Circle", "Dot"}, function(selected)
+        AimbotConfig.weapons[weapon].predictionVisualizationType = selected
+    end, AimbotConfig.weapons[weapon].predictionVisualizationType, string.format("%s_prediction_visualization_type", weapon))
+    sections.Prediction:AddElement(elements[weapon.."_predictionVisualizationType"], weaponIndex)
+
+    elements[weapon.."_predictionColor"] = ColorPicker:new("Prediction Color", function(color)
+        AimbotConfig.weapons[weapon].predictionColor = color
+    end, AimbotConfig.weapons[weapon].predictionColor)
+    sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
+end, "Nailgun Weapon Prediction 3")
+
+QueueInitStep(function()
+    sections.ESPPreview = tabs.Visuals:AddESPPreview("ESP Preview", 10, 60, 250, 350)
+    sections.ESPSettings = tabs.Visuals:AddSection("ESP Settings", 270, 60, 350, 530)
+end, "ESP Sections")
+
+QueueInitStep(function()
+    elements.enableESP = Toggle:new("Enable ESP", function(state)
+        Library.ESP.Enabled = state
+    end, Library.ESP.Enabled, "esp_enabled")
+    sections.ESPSettings:AddElement(elements.enableESP)
+end, "ESP Enable")
+
+QueueInitStep(function()
+    elements.boxToggle = Toggle:new("Box ESP", function(state)
+        Library.ESP.Show2DBox = state
+        Library.ESPPreview.Components.Box = state
+    end, Library.ESP.Show2DBox, "esp_box")
+    elements.boxToggle:AddColorPicker("Box Color", function(color)
+        Library.ESP.Colors.Box = color
+        Library.ESPPreview.Colors.Box = color
+    end, Library.ESP.Colors.Box)
+    sections.ESPSettings:AddElement(elements.boxToggle)
+end, "ESP Box")
+
+QueueInitStep(function()
+    elements.healthBarToggle = Toggle:new("Health Bar", function(state)
+        Library.ESP.ShowHealth = state
+        Library.ESPPreview.Components.HealthBar = state
+    end, Library.ESP.ShowHealth, "esp_healthbar")
+    sections.ESPSettings:AddElement(elements.healthBarToggle)
+end, "ESP Health Bar")
+
+QueueInitStep(function()
+    elements.nameToggle = Toggle:new("Name ESP", function(state)
+        Library.ESP.ShowName = state
+        Library.ESPPreview.Components.Name = state
+    end, Library.ESP.ShowName, "esp_name")
+    elements.nameToggle:AddColorPicker("Name Color", function(color)
+        Library.ESP.Colors.Name = color
+        Library.ESPPreview.Colors.Name = color
+    end, Library.ESP.Colors.Name)
+    sections.ESPSettings:AddElement(elements.nameToggle)
+end, "ESP Name")
+
+QueueInitStep(function()
+    elements.showTagsToggle = Toggle:new("Show Tags", function(state)
+        Library.ESP.ShowTags = state
+    end, Library.ESP.ShowTags, "esp_show_tags")
+    sections.ESPSettings:AddElement(elements.showTagsToggle)
+end, "ESP Tags")
+
+QueueInitStep(function()
+    elements.distanceToggle = Toggle:new("Distance ESP", function(state)
+        Library.ESP.ShowDistance = state
+        Library.ESPPreview.Components.Distance = state
+    end, Library.ESP.ShowDistance, "esp_distance")
+    elements.distanceToggle:AddColorPicker("Distance Color", function(color)
+        Library.ESP.Colors.Distance = color
+        Library.ESPPreview.Colors.Distance = color
+    end, Library.ESP.Colors.Distance)
+    sections.ESPSettings:AddElement(elements.distanceToggle)
+end, "ESP Distance")
+
+QueueInitStep(function()
+    elements.weaponToggle = Toggle:new("Weapon ESP", function(state)
+        Library.ESP.ShowWeapon = state
+        Library.ESPPreview.Components.Weapon = state
+    end, Library.ESP.ShowWeapon, "esp_weapon")
+    elements.weaponToggle:AddColorPicker("Weapon Color", function(color)
+        Library.ESP.Colors.Weapon = color
+        Library.ESPPreview.Colors.Weapon = color
+    end, Library.ESP.Colors.Weapon)
+    sections.ESPSettings:AddElement(elements.weaponToggle)
+end, "ESP Weapon")
+
+QueueInitStep(function()
+    elements.skeletonToggle = Toggle:new("Skeleton ESP", function(state)
+        Library.ESP.ShowSkeleton = state
+        Library.ESPPreview.Components.Skeleton = state
+    end, Library.ESP.ShowSkeleton, "esp_skeleton")
+    elements.skeletonToggle:AddColorPicker("Skeleton Color", function(color)
+        Library.ESP.Colors.Skeleton = color
+        Library.ESPPreview.Colors.Skeleton = color
+    end, Library.ESP.Colors.Skeleton)
+    sections.ESPSettings:AddElement(elements.skeletonToggle)
+end, "ESP Skeleton")
+
+QueueInitStep(function()
+    elements.flagsToggle = Toggle:new("Flags ESP", function(state)
+        Library.ESP.ShowFlags = state
+        Library.ESPPreview.Components.Flags = state
+    end, Library.ESP.ShowFlags, "esp_flags")
+    elements.flagsToggle:AddColorPicker("Flags Color", function(color)
+        Library.ESP.Colors.Flags = color
+        Library.ESPPreview.Colors.Flags = color
+    end, Library.ESP.Colors.Flags)
+    sections.ESPSettings:AddElement(elements.flagsToggle)
+end, "ESP Flags")
+
+QueueInitStep(function()
+    elements.onlyEnemiesToggle = Toggle:new("Only Enemies", function(state)
+        Library.ESP.OnlyEnemies = state
+    end, Library.ESP.OnlyEnemies, "esp_only_enemies")
+    sections.ESPSettings:AddElement(elements.onlyEnemiesToggle)
+end, "ESP Only Enemies")
+
+QueueInitStep(function()
+    elements.enemyColorPicker = ColorPicker:new("Enemy Color", function(color)
+        Library.ESP.Colors.Enemy = color
+    end, Library.ESP.Colors.Enemy)
+    sections.ESPSettings:AddElement(elements.enemyColorPicker)
+
+    elements.friendlyColorPicker = ColorPicker:new("Friendly Color", function(color)
+        Library.ESP.Colors.Friendly = color
+    end, Library.ESP.Colors.Friendly)
+    sections.ESPSettings:AddElement(elements.friendlyColorPicker)
+end, "ESP Entity Colors")
+
+QueueInitStep(function()
+    elements.maxDistanceSlider = Slider:new("Max Distance", 100, 20000, Library.ESP.MaxDistance, function(value)
+        Library.ESP.MaxDistance = value
+    end, "esp_max_distance")
+    sections.ESPSettings:AddElement(elements.maxDistanceSlider)
+end, "ESP Max Distance")
+
+QueueInitStep(function()
+    sections.ESPMain = tabs.Entities:AddSection("ESP Main Controls", 10, 60, 300, 150)
+    
+    elements.enableMainESP = Toggle:new("Enable ESP", function(state)
+        ESPConfig.MainEnabled = state
+    end, ESPConfig.MainEnabled, "main_esp_enabled")
+    sections.ESPMain:AddElement(elements.enableMainESP)
+
+    elements.antiClutter = Toggle:new("Anti-Clutter", function(state)
+        ESPConfig.AntiClutter = state
+    end, ESPConfig.AntiClutter, "anti_clutter_enabled")
+    sections.ESPMain:AddElement(elements.antiClutter)
+end, "Entity ESP Main")
+
+QueueInitStep(function()
+    local ResourceCategories = {"Ores", "Plants", "World Items", "Loot"}
+    multiSections.Resources = tabs.Entities:AddMultiSection("Resources ESP", ResourceCategories, 10, 220, 300, 350)
+end, "Resources MultiSection")
+
+QueueInitStep(function()
+    elements.oresMainToggle = Toggle:new("Enable Ores ESP", function(state)
+        ESPConfig.OresEnabled = state
+    end, ESPConfig.OresEnabled, "ores_main_enabled")
+    multiSections.Resources:AddElement(elements.oresMainToggle, 1)
+
+    elements.oresMultiSelect = MultiSelectDropdown:new("Ore Types", 
+        {"Stone", "Metal", "Phosphate"}, 
+        function(selected)
+            ESPConfig.SelectedOres = selected
+        end, 
+        ESPConfig.SelectedOres, 
+        "selected_ores")
+    multiSections.Resources:AddElement(elements.oresMultiSelect, 1)
+end, "Ores ESP 1")
+
+QueueInitStep(function()
+    elements.stoneColorPicker = ColorPicker:new("Stone Color", function(color)
+        ESPConfig.Colors.Stone = color
+    end, ESPConfig.Colors.Stone)
+    multiSections.Resources:AddElement(elements.stoneColorPicker, 1)
+
+    elements.metalColorPicker = ColorPicker:new("Metal Color", function(color)
+        ESPConfig.Colors.Metal = color
+    end, ESPConfig.Colors.Metal)
+    multiSections.Resources:AddElement(elements.metalColorPicker, 1)
+
+    elements.phosphateColorPicker = ColorPicker:new("Phosphate Color", function(color)
+        ESPConfig.Colors.Phosphate = color
+    end, ESPConfig.Colors.Phosphate)
+    multiSections.Resources:AddElement(elements.phosphateColorPicker, 1)
+end, "Ores ESP 2")
+
+QueueInitStep(function()
+    elements.oresDistance = Slider:new("Ores Distance", 100, 3000, ESPConfig.OresDistance, function(value)
+        ESPConfig.OresDistance = value
+    end, "ores_distance")
+    multiSections.Resources:AddElement(elements.oresDistance, 1)
+
+    elements.oresShowDistance = Toggle:new("Show Distance", function(state)
+        ESPConfig.OresShowDistance = state
+    end, ESPConfig.OresShowDistance, "ores_show_distance")
+    multiSections.Resources:AddElement(elements.oresShowDistance, 1)
+
+    elements.oresTracers = Toggle:new("Ores Tracers", function(state)
+        ESPConfig.OresTracers = state
+    end, ESPConfig.OresTracers, "ores_tracers")
+    multiSections.Resources:AddElement(elements.oresTracers, 1)
+end, "Ores ESP 3")
+
+QueueInitStep(function()
+    elements.plantsMainToggle = Toggle:new("Enable Plants ESP", function(state)
+        ESPConfig.PlantsEnabled = state
+    end, ESPConfig.PlantsEnabled, "plants_main_enabled")
+    multiSections.Resources:AddElement(elements.plantsMainToggle, 2)
+
+    elements.plantsMultiSelect = MultiSelectDropdown:new("Plant Types", 
+        {"Wool", "Raspberry", "Corn", "Tomato", "Blueberry", "Lemon"}, 
+        function(selected)
+            ESPConfig.SelectedPlants = selected
+        end, 
+        ESPConfig.SelectedPlants, 
+        "selected_plants")
+    multiSections.Resources:AddElement(elements.plantsMultiSelect, 2)
+end, "Plants ESP 1")
+
+QueueInitStep(function()
+    local plantTypes = {"Wool", "Raspberry", "Corn"}
+    for _, plant in ipairs(plantTypes) do
+        elements[plant:lower() .. "ColorPicker"] = ColorPicker:new(plant .. " Color", function(color)
+            ESPConfig.Colors[plant] = color
+        end, ESPConfig.Colors[plant])
+        multiSections.Resources:AddElement(elements[plant:lower() .. "ColorPicker"], 2)
     end
-    return false
-end
+end, "Plants ESP Colors 1")
 
-elements.enableMainESP = Toggle:new("Enable ESP", function(state)
-    ESPConfig.MainEnabled = state
-end, ESPConfig.MainEnabled, "main_esp_enabled")
-sections.ESPMain:AddElement(elements.enableMainESP)
-
-elements.antiClutter = Toggle:new("Anti-Clutter", function(state)
-    ESPConfig.AntiClutter = state
-end, ESPConfig.AntiClutter, "anti_clutter_enabled")
-sections.ESPMain:AddElement(elements.antiClutter)
-
-local ResourceCategories = {"Ores", "Plants", "World Items", "Loot"}
-multiSections.Resources = tabs.Entities:AddMultiSection("Resources ESP", ResourceCategories, 10, 220, 300, 350)
-
-elements.oresMainToggle = Toggle:new("Enable Ores ESP", function(state)
-    ESPConfig.OresEnabled = state
-end, ESPConfig.OresEnabled, "ores_main_enabled")
-multiSections.Resources:AddElement(elements.oresMainToggle, 1)
-
-elements.oresMultiSelect = MultiSelectDropdown:new("Ore Types", 
-    {"Stone", "Metal", "Phosphate"}, 
-    function(selected)
-        ESPConfig.SelectedOres = selected
-    end, 
-    ESPConfig.SelectedOres, 
-    "selected_ores")
-multiSections.Resources:AddElement(elements.oresMultiSelect, 1)
-
-elements.stoneColorPicker = ColorPicker:new("Stone Color", function(color)
-    ESPConfig.Colors.Stone = color
-end, ESPConfig.Colors.Stone)
-multiSections.Resources:AddElement(elements.stoneColorPicker, 1)
-
-elements.metalColorPicker = ColorPicker:new("Metal Color", function(color)
-    ESPConfig.Colors.Metal = color
-end, ESPConfig.Colors.Metal)
-multiSections.Resources:AddElement(elements.metalColorPicker, 1)
-
-elements.phosphateColorPicker = ColorPicker:new("Phosphate Color", function(color)
-    ESPConfig.Colors.Phosphate = color
-end, ESPConfig.Colors.Phosphate)
-multiSections.Resources:AddElement(elements.phosphateColorPicker, 1)
-
-elements.oresDistance = Slider:new("Ores Distance", 100, 3000, ESPConfig.OresDistance, function(value)
-    ESPConfig.OresDistance = value
-end, "ores_distance")
-multiSections.Resources:AddElement(elements.oresDistance, 1)
-
-elements.oresShowDistance = Toggle:new("Show Distance", function(state)
-    ESPConfig.OresShowDistance = state
-end, ESPConfig.OresShowDistance, "ores_show_distance")
-multiSections.Resources:AddElement(elements.oresShowDistance, 1)
-
-elements.oresTracers = Toggle:new("Ores Tracers", function(state)
-    ESPConfig.OresTracers = state
-end, ESPConfig.OresTracers, "ores_tracers")
-multiSections.Resources:AddElement(elements.oresTracers, 1)
-
-elements.plantsMainToggle = Toggle:new("Enable Plants ESP", function(state)
-    ESPConfig.PlantsEnabled = state
-end, ESPConfig.PlantsEnabled, "plants_main_enabled")
-multiSections.Resources:AddElement(elements.plantsMainToggle, 2)
-
-elements.plantsMultiSelect = MultiSelectDropdown:new("Plant Types", 
-    {"Wool", "Raspberry", "Corn", "Tomato", "Blueberry", "Lemon"}, 
-    function(selected)
-        ESPConfig.SelectedPlants = selected
-    end, 
-    ESPConfig.SelectedPlants, 
-    "selected_plants")
-multiSections.Resources:AddElement(elements.plantsMultiSelect, 2)
-
-local plantTypes = {"Wool", "Raspberry", "Corn", "Tomato", "Blueberry", "Lemon"}
-for _, plant in ipairs(plantTypes) do
-    elements[plant:lower() .. "ColorPicker"] = ColorPicker:new(plant .. " Color", function(color)
-        ESPConfig.Colors[plant] = color
-    end, ESPConfig.Colors[plant])
-    multiSections.Resources:AddElement(elements[plant:lower() .. "ColorPicker"], 2)
-end
-
-elements.plantsDistance = Slider:new("Plants Distance", 100, 4000, ESPConfig.PlantsDistance, function(value)
-    ESPConfig.PlantsDistance = value
-end, "plants_distance")
-multiSections.Resources:AddElement(elements.plantsDistance, 2)
-
-elements.plantsShowDistance = Toggle:new("Show Distance", function(state)
-    ESPConfig.PlantsShowDistance = state
-end, ESPConfig.PlantsShowDistance, "plants_show_distance")
-multiSections.Resources:AddElement(elements.plantsShowDistance, 2)
-
-elements.plantsTracers = Toggle:new("Plants Tracers", function(state)
-    ESPConfig.PlantsTracers = state
-end, ESPConfig.PlantsTracers, "plants_tracers")
-multiSections.Resources:AddElement(elements.plantsTracers, 2)
-
-elements.dropsToggle = Toggle:new("Drops ESP", function(state)
-    ESPConfig.DropsEnabled = state
-end, ESPConfig.DropsEnabled, "drops_enabled")
-elements.dropsToggle:AddColorPicker("Drops Color", function(color)
-    ESPConfig.Colors.Drops = color
-end, ESPConfig.Colors.Drops, "drops_color")
-multiSections.Resources:AddElement(elements.dropsToggle, 3)
-
-elements.dropsDistance = Slider:new("Drops Distance", 100, 4000, ESPConfig.DropsDistance, function(value)
-    ESPConfig.DropsDistance = value
-end, "drops_distance")
-multiSections.Resources:AddElement(elements.dropsDistance, 3)
-
-elements.digPileToggle = Toggle:new("DigPile ESP", function(state)
-    ESPConfig.DigPileEnabled = state
-end, ESPConfig.DigPileEnabled, "digpile_enabled")
-elements.digPileToggle:AddColorPicker("DigPile Color", function(color)
-    ESPConfig.Colors.DigPile = color
-end, ESPConfig.Colors.DigPile, "digpile_color")
-multiSections.Resources:AddElement(elements.digPileToggle, 3)
-
-elements.digPileDistance = Slider:new("DigPile Distance", 100, 4000, ESPConfig.DigPileDistance, function(value)
-    ESPConfig.DigPileDistance = value
-end, "digpile_distance")
-multiSections.Resources:AddElement(elements.digPileDistance, 3)
-
-elements.keycardToggle = Toggle:new("Keycard ESP", function(state)
-    ESPConfig.KeycardEnabled = state
-end, ESPConfig.KeycardEnabled, "keycard_enabled")
-elements.keycardToggle:AddColorPicker("Keycard Color", function(color)
-    ESPConfig.Colors.Keycard = color
-end, ESPConfig.Colors.Keycard, "keycard_color")
-multiSections.Resources:AddElement(elements.keycardToggle, 4)
-
-elements.monumentSpawnsToggle = Toggle:new("Monument Spawns ESP", function(state)
-    ESPConfig.MonumentSpawnsEnabled = state
-end, ESPConfig.MonumentSpawnsEnabled, "monument_spawns_enabled")
-multiSections.Resources:AddElement(elements.monumentSpawnsToggle, 4)
-
-elements.lootMultiSelect = MultiSelectDropdown:new("Loot Types", 
-    {"TrashCan", "OilBarrel", "LockedWoodenCrate", "LockedMetalCrate", "FoodCrate"}, 
-    function(selected)
-        ESPConfig.SelectedLoot = selected
-    end, 
-    ESPConfig.SelectedLoot, 
-    "selected_loot")
-multiSections.Resources:AddElement(elements.lootMultiSelect, 4)
-
-local lootTypes = {"TrashCan", "OilBarrel", "LockedWoodenCrate", "LockedMetalCrate", "FoodCrate"}
-for _, loot in ipairs(lootTypes) do
-    local displayName = loot:gsub("([A-Z])", " %1"):gsub("^%s+", "")
-    elements[loot:lower() .. "ColorPicker"] = ColorPicker:new(displayName .. " Color", function(color)
-        ESPConfig.Colors[loot] = color
-    end, ESPConfig.Colors[loot])
-    multiSections.Resources:AddElement(elements[loot:lower() .. "ColorPicker"], 4)
-end
-
-local EntityCategories = {"Soldiers", "Animals", "Players", "Misc"}
-multiSections.Entities = tabs.Entities:AddMultiSection("Entities ESP", EntityCategories, 320, 220, 300, 350)
-
-elements.soldiersToggle = Toggle:new("Soldier ESP", function(state)
-    ESPConfig.SoldiersEnabled = state
-end, ESPConfig.SoldiersEnabled, "soldiers_enabled")
-elements.soldiersToggle:AddColorPicker("Soldier Color", function(color)
-    ESPConfig.Colors.Soldier = color
-end, ESPConfig.Colors.Soldier, "soldiers_color")
-multiSections.Entities:AddElement(elements.soldiersToggle, 1)
-
-elements.soldiersDistance = Slider:new("Soldiers Distance", 100, 3000, ESPConfig.SoldiersDistance, function(value)
-    ESPConfig.SoldiersDistance = value
-end, "soldiers_distance")
-multiSections.Entities:AddElement(elements.soldiersDistance, 1)
-
-elements.soldiersShowDistance = Toggle:new("Show Distance", function(state)
-    ESPConfig.SoldiersShowDistance = state
-end, ESPConfig.SoldiersShowDistance, "soldiers_show_distance")
-multiSections.Entities:AddElement(elements.soldiersShowDistance, 1)
-
-elements.soldiersTracers = Toggle:new("Soldiers Tracers", function(state)
-    ESPConfig.SoldiersTracers = state
-end, ESPConfig.SoldiersTracers, "soldiers_tracers")
-multiSections.Entities:AddElement(elements.soldiersTracers, 1)
-
-elements.animalsMainToggle = Toggle:new("Enable Animals ESP", function(state)
-    ESPConfig.AnimalsEnabled = state
-end, ESPConfig.AnimalsEnabled, "animals_main_enabled")
-multiSections.Entities:AddElement(elements.animalsMainToggle, 2)
-
-elements.animalsMultiSelect = MultiSelectDropdown:new("Animal Types", 
-    {"Deer", "Wildboar", "Wolf"}, 
-    function(selected)
-        ESPConfig.SelectedAnimals = selected
-    end, 
-    ESPConfig.SelectedAnimals, 
-    "selected_animals")
-multiSections.Entities:AddElement(elements.animalsMultiSelect, 2)
-
-local animalTypes = {"Deer", "Wildboar", "Wolf"}
-for _, animal in ipairs(animalTypes) do
-    elements[animal:lower() .. "ColorPicker"] = ColorPicker:new(animal .. " Color", function(color)
-        ESPConfig.Colors[animal] = color
-    end, ESPConfig.Colors[animal])
-    multiSections.Entities:AddElement(elements[animal:lower() .. "ColorPicker"], 2)
-end
-
-elements.animalsDistance = Slider:new("Animals Distance", 100, 4000, ESPConfig.AnimalsDistance, function(value)
-    ESPConfig.AnimalsDistance = value
-end, "animals_distance")
-multiSections.Entities:AddElement(elements.animalsDistance, 2)
-
-elements.animalsShowDistance = Toggle:new("Show Distance", function(state)
-    ESPConfig.AnimalsShowDistance = state
-end, ESPConfig.AnimalsShowDistance, "animals_show_distance")
-multiSections.Entities:AddElement(elements.animalsShowDistance, 2)
-
-elements.animalsTracers = Toggle:new("Animals Tracers", function(state)
-    ESPConfig.AnimalsTracers = state
-end, ESPConfig.AnimalsTracers, "animals_tracers")
-multiSections.Entities:AddElement(elements.animalsTracers, 2)
-
-elements.sleeperToggle = Toggle:new("Sleeper ESP", function(state)
-    ESPConfig.SleeperEnabled = state
-end, ESPConfig.SleeperEnabled, "sleeper_enabled")
-elements.sleeperToggle:AddColorPicker("Sleeper Color", function(color)
-    ESPConfig.Colors.Sleeper = color
-end, ESPConfig.Colors.Sleeper, "sleeper_color")
-multiSections.Entities:AddElement(elements.sleeperToggle, 3)
-
-elements.sleeperDistance = Slider:new("Sleeper Distance", 100, 3000, ESPConfig.SleeperDistance, function(value)
-    ESPConfig.SleeperDistance = value
-end, "sleeper_distance")
-multiSections.Entities:AddElement(elements.sleeperDistance, 3)
-
-elements.bodyBagToggle = Toggle:new("Body Bag ESP", function(state)
-    ESPConfig.BodyBagEnabled = state
-end, ESPConfig.BodyBagEnabled, "body_bag_enabled")
-elements.bodyBagToggle:AddColorPicker("Body Bag Color", function(color)
-    ESPConfig.Colors.BodyBag = color
-end, ESPConfig.Colors.BodyBag, "body_bag_color")
-multiSections.Entities:AddElement(elements.bodyBagToggle, 3)
-
-elements.bodyBagDistance = Slider:new("Body Bag Distance", 100, 3000, ESPConfig.BodyBagDistance, function(value)
-    ESPConfig.BodyBagDistance = value
-end, "body_bag_distance")
-multiSections.Entities:AddElement(elements.bodyBagDistance, 3)
-
-elements.modAdminViewer = Toggle:new("Mod/Admin Viewer", function(state)
-    ESPConfig.ModAdminViewerEnabled = state
-end, ESPConfig.ModAdminViewerEnabled, "mod_admin_viewer_enabled")
-multiSections.Entities:AddElement(elements.modAdminViewer, 4)
-
-sections.MainPlayerList = tabs.Player:AddPlayerList("Player List", 10, 60, 610, 450)
-
-sections.General = tabs.Settings:AddSection("General Settings", 10, 60, 300, 200)
-
-elements.toggleKeybindsList = Toggle:new("Keybinds List", function(state)
-    Library.KeybindsList.visible = state
-end, Library.KeybindsList.visible, "keybinds_list_enabled")
-sections.General:AddElement(elements.toggleKeybindsList)
-
-elements.menu_toggle = Toggle:new("Menu Toggle", function(state)
-end, false, "menu_visible")
-elements.menu_keybind = elements.menu_toggle:AddKeybind(0x12, "Toggle") 
-sections.General:AddElement(elements.menu_toggle)
-
-elements.targethud_toggle = Toggle:new("Target HUD", function(state)
-    Library.TargetHUD.visible = state
-end, Library.TargetHUD.visible, "target_hud")
-sections.General:AddElement(elements.targethud_toggle)
-
-elements.enableAnimations = Toggle:new("Enable Animations", function(state)
-    Library.Settings.Tween = state
-end, Library.Settings.Tween, "animations_enabled")
-sections.General:AddElement(elements.enableAnimations)
-
-elements.animationSpeed = Slider:new("Animation Speed", 0.05, 0.3, Library.Settings.Animation.Speed, function(value)
-    Library.Settings.Animation.Speed = value
-end, "animation_speed")
-sections.General:AddElement(elements.animationSpeed)
-
-sections.Theme = tabs.Settings:AddSection("Theme Settings", 320, 60, 300, 415)
-
-local themeNames = {}
-for name, _ in pairs(Library.Theme.List) do
-    table.insert(themeNames, name)
-end
-
-elements.themeSelector = Dropdown:new("Select Theme", themeNames, function(selected)
-end, Library.Theme.Selected, "selected_theme")
-sections.Theme:AddElement(elements.themeSelector)
-
-elements.applyThemeButton = Button:new("Apply Theme", function()
-    if elements.themeSelector.value then
-        Library.Theme.Selected = elements.themeSelector.value
-        Library.RefreshTheme()
+QueueInitStep(function()
+    local plantTypes = {"Tomato", "Blueberry", "Lemon"}
+    for _, plant in ipairs(plantTypes) do
+        elements[plant:lower() .. "ColorPicker"] = ColorPicker:new(plant .. " Color", function(color)
+            ESPConfig.Colors[plant] = color
+        end, ESPConfig.Colors[plant])
+        multiSections.Resources:AddElement(elements[plant:lower() .. "ColorPicker"], 2)
     end
-end)
-sections.Theme:AddElement(elements.applyThemeButton)
+end, "Plants ESP Colors 2")
 
-local themeKeys = {
-    "Accent", "Warning", "Error", "Header", "Text", "Secondary",
-    "Outer", "Light", "Dark", "High", "Mid", "Low", "Stroke",
-    "AccentLight", "MidLight"
-}
+QueueInitStep(function()
+    elements.plantsDistance = Slider:new("Plants Distance", 100, 4000, ESPConfig.PlantsDistance, function(value)
+        ESPConfig.PlantsDistance = value
+    end, "plants_distance")
+    multiSections.Resources:AddElement(elements.plantsDistance, 2)
 
-elements.colorPickers = {}
-for i, key in ipairs(themeKeys) do
-    local row = math.floor((i-1)/2)
-    local col = (i-1) % 2
-    
-    elements["label_"..key] = {
-        Render = function()
-            local x, y = sections.Theme:GetAbsolutePos()
-            local theme = Library.Theme.List[Library.Theme.Selected]
-            local labelX = 320 + 10 + (col * 150)
-            local labelY = 60 + 40 + (row * 25)
-            
-            render.text(labelX, labelY, theme.Text[1], theme.Text[2], theme.Text[3], theme.Text[4], 
-                        1, false, key)
+    elements.plantsShowDistance = Toggle:new("Show Distance", function(state)
+        ESPConfig.PlantsShowDistance = state
+    end, ESPConfig.PlantsShowDistance, "plants_show_distance")
+    multiSections.Resources:AddElement(elements.plantsShowDistance, 2)
+
+    elements.plantsTracers = Toggle:new("Plants Tracers", function(state)
+        ESPConfig.PlantsTracers = state
+    end, ESPConfig.PlantsTracers, "plants_tracers")
+    multiSections.Resources:AddElement(elements.plantsTracers, 2)
+end, "Plants ESP 2")
+
+QueueInitStep(function()
+    elements.dropsToggle = Toggle:new("Drops ESP", function(state)
+        ESPConfig.DropsEnabled = state
+    end, ESPConfig.DropsEnabled, "drops_enabled")
+    elements.dropsToggle:AddColorPicker("Drops Color", function(color)
+        ESPConfig.Colors.Drops = color
+    end, ESPConfig.Colors.Drops, "drops_color")
+    multiSections.Resources:AddElement(elements.dropsToggle, 3)
+
+    elements.dropsDistance = Slider:new("Drops Distance", 100, 4000, ESPConfig.DropsDistance, function(value)
+        ESPConfig.DropsDistance = value
+    end, "drops_distance")
+    multiSections.Resources:AddElement(elements.dropsDistance, 3)
+end, "World Items 1")
+
+QueueInitStep(function()
+    elements.digPileToggle = Toggle:new("DigPile ESP", function(state)
+        ESPConfig.DigPileEnabled = state
+    end, ESPConfig.DigPileEnabled, "digpile_enabled")
+    elements.digPileToggle:AddColorPicker("DigPile Color", function(color)
+        ESPConfig.Colors.DigPile = color
+    end, ESPConfig.Colors.DigPile, "digpile_color")
+    multiSections.Resources:AddElement(elements.digPileToggle, 3)
+
+    elements.digPileDistance = Slider:new("DigPile Distance", 100, 4000, ESPConfig.DigPileDistance, function(value)
+        ESPConfig.DigPileDistance = value
+    end, "digpile_distance")
+    multiSections.Resources:AddElement(elements.digPileDistance, 3)
+end, "World Items 2")
+
+QueueInitStep(function()
+    elements.keycardToggle = Toggle:new("Keycard ESP", function(state)
+        ESPConfig.KeycardEnabled = state
+    end, ESPConfig.KeycardEnabled, "keycard_enabled")
+    elements.keycardToggle:AddColorPicker("Keycard Color", function(color)
+        ESPConfig.Colors.Keycard = color
+    end, ESPConfig.Colors.Keycard, "keycard_color")
+    multiSections.Resources:AddElement(elements.keycardToggle, 4)
+
+    elements.monumentSpawnsToggle = Toggle:new("Monument Spawns ESP", function(state)
+        ESPConfig.MonumentSpawnsEnabled = state
+    end, ESPConfig.MonumentSpawnsEnabled, "monument_spawns_enabled")
+    multiSections.Resources:AddElement(elements.monumentSpawnsToggle, 4)
+end, "Loot 1")
+
+QueueInitStep(function()
+    elements.lootMultiSelect = MultiSelectDropdown:new("Loot Types", 
+        {"TrashCan", "OilBarrel", "LockedWoodenCrate", "LockedMetalCrate", "FoodCrate"}, 
+        function(selected)
+            ESPConfig.SelectedLoot = selected
+        end, 
+        ESPConfig.SelectedLoot, 
+        "selected_loot")
+    multiSections.Resources:AddElement(elements.lootMultiSelect, 4)
+end, "Loot 2")
+
+QueueInitStep(function()
+    local lootTypes = {"TrashCan", "OilBarrel", "LockedWoodenCrate"}
+    for _, loot in ipairs(lootTypes) do
+        local displayName = loot:gsub("([A-Z])", " %1"):gsub("^%s+", "")
+        elements[loot:lower() .. "ColorPicker"] = ColorPicker:new(displayName .. " Color", function(color)
+            ESPConfig.Colors[loot] = color
+        end, ESPConfig.Colors[loot])
+        multiSections.Resources:AddElement(elements[loot:lower() .. "ColorPicker"], 4)
+    end
+end, "Loot Colors 1")
+
+QueueInitStep(function()
+    local lootTypes = {"LockedMetalCrate", "FoodCrate"}
+    for _, loot in ipairs(lootTypes) do
+        local displayName = loot:gsub("([A-Z])", " %1"):gsub("^%s+", "")
+        elements[loot:lower() .. "ColorPicker"] = ColorPicker:new(displayName .. " Color", function(color)
+            ESPConfig.Colors[loot] = color
+        end, ESPConfig.Colors[loot])
+        multiSections.Resources:AddElement(elements[loot:lower() .. "ColorPicker"], 4)
+    end
+end, "Loot Colors 2")
+
+QueueInitStep(function()
+    local EntityCategories = {"Soldiers", "Animals", "Players", "Misc"}
+    multiSections.Entities = tabs.Entities:AddMultiSection("Entities ESP", EntityCategories, 320, 220, 300, 350)
+end, "Entities MultiSection")
+
+QueueInitStep(function()
+    elements.soldiersToggle = Toggle:new("Soldier ESP", function(state)
+        ESPConfig.SoldiersEnabled = state
+    end, ESPConfig.SoldiersEnabled, "soldiers_enabled")
+    elements.soldiersToggle:AddColorPicker("Soldier Color", function(color)
+        ESPConfig.Colors.Soldier = color
+    end, ESPConfig.Colors.Soldier, "soldiers_color")
+    multiSections.Entities:AddElement(elements.soldiersToggle, 1)
+
+    elements.soldiersDistance = Slider:new("Soldiers Distance", 100, 3000, ESPConfig.SoldiersDistance, function(value)
+        ESPConfig.SoldiersDistance = value
+    end, "soldiers_distance")
+    multiSections.Entities:AddElement(elements.soldiersDistance, 1)
+end, "Soldiers ESP 1")
+
+QueueInitStep(function()
+    elements.soldiersShowDistance = Toggle:new("Show Distance", function(state)
+        ESPConfig.SoldiersShowDistance = state
+    end, ESPConfig.SoldiersShowDistance, "soldiers_show_distance")
+    multiSections.Entities:AddElement(elements.soldiersShowDistance, 1)
+
+    elements.soldiersTracers = Toggle:new("Soldiers Tracers", function(state)
+        ESPConfig.SoldiersTracers = state
+    end, ESPConfig.SoldiersTracers, "soldiers_tracers")
+    multiSections.Entities:AddElement(elements.soldiersTracers, 1)
+end, "Soldiers ESP 2")
+
+QueueInitStep(function()
+    elements.animalsMainToggle = Toggle:new("Enable Animals ESP", function(state)
+        ESPConfig.AnimalsEnabled = state
+    end, ESPConfig.AnimalsEnabled, "animals_main_enabled")
+    multiSections.Entities:AddElement(elements.animalsMainToggle, 2)
+
+    elements.animalsMultiSelect = MultiSelectDropdown:new("Animal Types", 
+        {"Deer", "Wildboar", "Wolf"}, 
+        function(selected)
+            ESPConfig.SelectedAnimals = selected
+        end, 
+        ESPConfig.SelectedAnimals, 
+        "selected_animals")
+    multiSections.Entities:AddElement(elements.animalsMultiSelect, 2)
+end, "Animals ESP 1")
+
+QueueInitStep(function()
+    local animalTypes = {"Deer", "Wildboar", "Wolf"}
+    for _, animal in ipairs(animalTypes) do
+        elements[animal:lower() .. "ColorPicker"] = ColorPicker:new(animal .. " Color", function(color)
+            ESPConfig.Colors[animal] = color
+        end, ESPConfig.Colors[animal])
+        multiSections.Entities:AddElement(elements[animal:lower() .. "ColorPicker"], 2)
+    end
+end, "Animals ESP Colors")
+
+QueueInitStep(function()
+    elements.animalsDistance = Slider:new("Animals Distance", 100, 4000, ESPConfig.AnimalsDistance, function(value)
+        ESPConfig.AnimalsDistance = value
+    end, "animals_distance")
+    multiSections.Entities:AddElement(elements.animalsDistance, 2)
+
+    elements.animalsShowDistance = Toggle:new("Show Distance", function(state)
+        ESPConfig.AnimalsShowDistance = state
+    end, ESPConfig.AnimalsShowDistance, "animals_show_distance")
+    multiSections.Entities:AddElement(elements.animalsShowDistance, 2)
+
+    elements.animalsTracers = Toggle:new("Animals Tracers", function(state)
+        ESPConfig.AnimalsTracers = state
+    end, ESPConfig.AnimalsTracers, "animals_tracers")
+    multiSections.Entities:AddElement(elements.animalsTracers, 2)
+end, "Animals ESP 2")
+
+QueueInitStep(function()
+    elements.sleeperToggle = Toggle:new("Sleeper ESP", function(state)
+        ESPConfig.SleeperEnabled = state
+    end, ESPConfig.SleeperEnabled, "sleeper_enabled")
+    elements.sleeperToggle:AddColorPicker("Sleeper Color", function(color)
+        ESPConfig.Colors.Sleeper = color
+    end, ESPConfig.Colors.Sleeper, "sleeper_color")
+    multiSections.Entities:AddElement(elements.sleeperToggle, 3)
+
+    elements.sleeperDistance = Slider:new("Sleeper Distance", 100, 3000, ESPConfig.SleeperDistance, function(value)
+        ESPConfig.SleeperDistance = value
+    end, "sleeper_distance")
+    multiSections.Entities:AddElement(elements.sleeperDistance, 3)
+end, "Sleeper ESP")
+
+QueueInitStep(function()
+    elements.bodyBagToggle = Toggle:new("Body Bag ESP", function(state)
+        ESPConfig.BodyBagEnabled = state
+    end, ESPConfig.BodyBagEnabled, "body_bag_enabled")
+    elements.bodyBagToggle:AddColorPicker("Body Bag Color", function(color)
+        ESPConfig.Colors.BodyBag = color
+    end, ESPConfig.Colors.BodyBag, "body_bag_color")
+    multiSections.Entities:AddElement(elements.bodyBagToggle, 3)
+
+    elements.bodyBagDistance = Slider:new("Body Bag Distance", 100, 3000, ESPConfig.BodyBagDistance, function(value)
+        ESPConfig.BodyBagDistance = value
+    end, "body_bag_distance")
+    multiSections.Entities:AddElement(elements.bodyBagDistance, 3)
+end, "Body Bag ESP")
+
+QueueInitStep(function()
+    elements.modAdminViewer = Toggle:new("Mod/Admin Viewer", function(state)
+        ESPConfig.ModAdminViewerEnabled = state
+    end, ESPConfig.ModAdminViewerEnabled, "mod_admin_viewer_enabled")
+    multiSections.Entities:AddElement(elements.modAdminViewer, 4)
+end, "Mod Admin Viewer")
+
+QueueInitStep(function()
+    sections.MainPlayerList = tabs.Player:AddPlayerList("Player List", 10, 60, 610, 450)
+end, "Player List")
+
+QueueInitStep(function()
+    sections.General = tabs.Settings:AddSection("General Settings", 10, 60, 300, 200)
+
+    elements.toggleKeybindsList = Toggle:new("Keybinds List", function(state)
+        Library.KeybindsList.visible = state
+    end, Library.KeybindsList.visible, "keybinds_list_enabled")
+    sections.General:AddElement(elements.toggleKeybindsList)
+end, "General Settings 1")
+
+QueueInitStep(function()
+    elements.menu_toggle = Toggle:new("Menu Toggle", function(state)
+    end, false, "menu_visible")
+    elements.menu_keybind = elements.menu_toggle:AddKeybind(0x12, "Toggle") 
+    sections.General:AddElement(elements.menu_toggle)
+
+    elements.targethud_toggle = Toggle:new("Target HUD", function(state)
+        Library.TargetHUD.visible = state
+    end, Library.TargetHUD.visible, "target_hud")
+    sections.General:AddElement(elements.targethud_toggle)
+end, "General Settings 2")
+
+QueueInitStep(function()
+    elements.enableAnimations = Toggle:new("Enable Animations", function(state)
+        Library.Settings.Tween = state
+    end, Library.Settings.Tween, "animations_enabled")
+    sections.General:AddElement(elements.enableAnimations)
+
+    elements.animationSpeed = Slider:new("Animation Speed", 0.05, 0.3, Library.Settings.Animation.Speed, function(value)
+        Library.Settings.Animation.Speed = value
+    end, "animation_speed")
+    sections.General:AddElement(elements.animationSpeed)
+end, "General Settings 3")
+
+QueueInitStep(function()
+    sections.Theme = tabs.Settings:AddSection("Theme Settings", 320, 60, 300, 415)
+
+    local themeNames = {}
+    for name, _ in pairs(Library.Theme.List) do
+        table.insert(themeNames, name)
+    end
+
+    elements.themeSelector = Dropdown:new("Select Theme", themeNames, function(selected)
+    end, Library.Theme.Selected, "selected_theme")
+    sections.Theme:AddElement(elements.themeSelector)
+end, "Theme Settings 1")
+
+QueueInitStep(function()
+    elements.applyThemeButton = Button:new("Apply Theme", function()
+        if elements.themeSelector.value then
+            Library.Theme.Selected = elements.themeSelector.value
+            Library.RefreshTheme()
         end
-    }
+    end)
+    sections.Theme:AddElement(elements.applyThemeButton)
+end, "Theme Settings 2")
+
+QueueInitStep(function()
+    local themeKeys = {"Accent", "Warning", "Error", "Header", "Text"}
     
-    elements[key.."Picker"] = ColorPicker:new(key, function(color)
-        if Library.Theme.List[Library.Theme.Selected] then
-            Library.Theme.List[Library.Theme.Selected][key] = color
-            for _, window in ipairs(Library.Windows) do
-                window.theme = Library.Theme.List[Library.Theme.Selected]
+    elements.colorPickers = {}
+    for i, key in ipairs(themeKeys) do
+        elements[key.."Picker"] = ColorPicker:new(key, function(color)
+            if Library.Theme.List[Library.Theme.Selected] then
+                Library.Theme.List[Library.Theme.Selected][key] = color
+                for _, window in ipairs(Library.Windows) do
+                    window.theme = Library.Theme.List[Library.Theme.Selected]
+                end
+            end
+        end, Library.Theme.List[Library.Theme.Selected][key])
+        sections.Theme:AddElement(elements[key.."Picker"])
+    end
+end, "Theme Colors 1")
+
+QueueInitStep(function()
+    local themeKeys = {"Secondary", "Outer", "Light", "Dark", "High"}
+    
+    for i, key in ipairs(themeKeys) do
+        elements[key.."Picker"] = ColorPicker:new(key, function(color)
+            if Library.Theme.List[Library.Theme.Selected] then
+                Library.Theme.List[Library.Theme.Selected][key] = color
+                for _, window in ipairs(Library.Windows) do
+                    window.theme = Library.Theme.List[Library.Theme.Selected]
+                end
+            end
+        end, Library.Theme.List[Library.Theme.Selected][key])
+        sections.Theme:AddElement(elements[key.."Picker"])
+    end
+end, "Theme Colors 2")
+
+QueueInitStep(function()
+    local themeKeys = {"Mid", "Low", "Stroke", "AccentLight", "MidLight"}
+    
+    for i, key in ipairs(themeKeys) do
+        elements[key.."Picker"] = ColorPicker:new(key, function(color)
+            if Library.Theme.List[Library.Theme.Selected] then
+                Library.Theme.List[Library.Theme.Selected][key] = color
+                for _, window in ipairs(Library.Windows) do
+                    window.theme = Library.Theme.List[Library.Theme.Selected]
+                end
+            end
+        end, Library.Theme.List[Library.Theme.Selected][key])
+        sections.Theme:AddElement(elements[key.."Picker"])
+    end
+end, "Theme Colors 3")
+
+QueueInitStep(function()
+    elements.resetThemeButton = Button:new("Reset to Default", function()
+        local currentTheme = Library.Theme.Selected
+        local defaultTheme = Library.Theme.List[currentTheme]
+        
+        local originalTheme = {}
+        for name, theme in pairs(Library.Theme.List) do
+            if name == currentTheme then
+                originalTheme = table.clone(theme)
+                break
             end
         end
-    end, Library.Theme.List[Library.Theme.Selected][key])
-    elements[key.."Picker"].x = 320 + 80 + (col * 150)
-    elements[key.."Picker"].y = 60 + 35 + (row * 25)
-    elements[key.."Picker"].width = 20
-    elements[key.."Picker"].height = 15
-    
-    sections.Theme:AddElement(elements[key.."Picker"])
-end
-
-elements.resetThemeButton = Button:new("Reset to Default", function()
-    local currentTheme = Library.Theme.Selected
-    local defaultTheme = Library.Theme.List[currentTheme]
-    
-    local originalTheme = {}
-    for name, theme in pairs(Library.Theme.List) do
-        if name == currentTheme then
-            originalTheme = table.clone(theme)
-            break
+        
+        for key, value in pairs(originalTheme) do
+            Library.Theme.List[currentTheme][key] = value
+            if elements[key.."Picker"] then
+                elements[key.."Picker"].color = value
+            end
         end
-    end
-    
-    for key, value in pairs(originalTheme) do
-        Library.Theme.List[currentTheme][key] = value
-        if elements[key.."Picker"] then
-            elements[key.."Picker"].color = value
+        
+        for _, window in ipairs(Library.Windows) do
+            window.theme = Library.Theme.List[currentTheme]
         end
-    end
-    
-    for _, window in ipairs(Library.Windows) do
-        window.theme = Library.Theme.List[currentTheme]
-    end
-end)
-sections.Theme:AddElement(elements.resetThemeButton)
+    end)
+    sections.Theme:AddElement(elements.resetThemeButton)
+end, "Theme Reset")
 
-function table.clone(org)
-    local copy = {}
-    for k, v in pairs(org) do
-        if type(v) == "table" then
-            copy[k] = table.clone(v)
+QueueInitStep(function()
+    sections.ConfigManagement = tabs.Settings:AddSection("Config Management", 10, 270, 300, 325)
+    local availableConfigs = Library.ConfigSystem:GetConfigs()
+    if #availableConfigs == 0 then
+        availableConfigs = {"No configs found"}
+    end
+
+    elements.configNameInput = Input:new("Config Name", function(value)
+    end, Library.ConfigSystem.Configs[1], "config_name")
+    sections.ConfigManagement:AddElement(elements.configNameInput)
+end, "Config Management 1")
+
+QueueInitStep(function()
+    elements.configList = List:new("Available Configs", availableConfigs, function(selected)
+        if selected and selected ~= "No configs found" then
+            elements.configNameInput:Set(selected)
+            Library.ConfigSystem.CurrentConfig = selected
+        end
+    end, nil, 6, "config_list")
+    sections.ConfigManagement:AddElement(elements.configList)
+end, "Config Management 2")
+
+QueueInitStep(function()
+    elements.saveConfigButton = Button:new("Save Config", function()
+        local configName = elements.configNameInput.value
+        if configName and configName ~= "" and configName ~= "No configs found" then
+            if Library.ConfigSystem:SaveConfig(configName) then
+                Library.Notify("Config Saved", "Successfully saved settings to "..configName..".json")
+                elements.configList.options = Library.ConfigSystem:GetConfigs()
+            else
+                Library.Notify("Config Error", "Failed to save config: "..configName, "error", 5000)
+            end
         else
-            copy[k] = v
+            Library.Notify("Config Error", "Configs cannot be saved without a name", "error", 5000)
         end
-    end
-    return copy
-end
+    end)
+    sections.ConfigManagement:AddElement(elements.saveConfigButton)
+end, "Config Management 3")
 
-sections.ConfigManagement = tabs.Settings:AddSection("Config Management", 10, 270, 300, 325)
-local availableConfigs = Library.ConfigSystem:GetConfigs()
-if #availableConfigs == 0 then
-    availableConfigs = {"No configs found"}
-end
-
-elements.configNameInput = Input:new("Config Name", function(value)
-end, Library.ConfigSystem.Configs[1], "config_name")
-sections.ConfigManagement:AddElement(elements.configNameInput)
-
-elements.configList = List:new("Available Configs", availableConfigs, function(selected)
-    if selected and selected ~= "No configs found" then
-        elements.configNameInput:Set(selected)
-        Library.ConfigSystem.CurrentConfig = selected
-    end
-end, nil, 6, "config_list")
-sections.ConfigManagement:AddElement(elements.configList)
-
-elements.saveConfigButton = Button:new("Save Config", function()
-    local configName = elements.configNameInput.value
-    if configName and configName ~= "" and configName ~= "No configs found" then
-        if Library.ConfigSystem:SaveConfig(configName) then
-            Library.Notify("Config Saved", "Successfully saved settings to "..configName..".json")
-            elements.configList.options = Library.ConfigSystem:GetConfigs()
+QueueInitStep(function()
+    elements.loadConfigButton = Button:new("Load Config", function()
+        local configName = elements.configNameInput.value
+        if configName and configName ~= "" and configName ~= "No configs found" then
+            if Library.ConfigSystem:LoadConfig(configName) then
+                Library.Notify("Config Loaded", "Successfully loaded config "..configName..".json")
+            else
+                Library.Notify("Config Error", "Failed to load config: "..configName, "error", 5000)
+            end
         else
-            Library.Notify("Config Error", "Failed to save config: "..configName, "error", 5000)
+            Library.Notify("Config Error", "Please select a valid config", "error", 5000)
         end
-    else
-        Library.Notify("Config Error", "Configs cannot be saved without a name", "error", 5000)
-    end
-end)
-sections.ConfigManagement:AddElement(elements.saveConfigButton)
+    end)
+    sections.ConfigManagement:AddElement(elements.loadConfigButton)
+end, "Config Management 4")
 
-elements.loadConfigButton = Button:new("Load Config", function()
-    local configName = elements.configNameInput.value
-    if configName and configName ~= "" and configName ~= "No configs found" then
-        if Library.ConfigSystem:LoadConfig(configName) then
-            Library.Notify("Config Loaded", "Successfully loaded config "..configName..".json")
+QueueInitStep(function()
+    local deleteConfigButton = Button:new("Delete Config", function()
+        local configName = elements.configNameInput.value
+        if configName and configName ~= "" and configName ~= "No configs found" then
+            if Library.ConfigSystem:DeleteConfig(configName) then
+                elements.configList.options = Library.ConfigSystem:GetConfigs()
+                elements.configNameInput:Set("")
+                Library.Notify("Config Deleted", "Successfully deleted config "..configName..".json")
+            else
+                Library.Notify("Config Error", "Failed to delete config: "..configName, "error", 5000)
+            end
         else
-            Library.Notify("Config Error", "Failed to load config: "..configName, "error", 5000)
+            Library.Notify("Config Error", "Please select a valid config", "error", 5000)
         end
-    else
-        Library.Notify("Config Error", "Please select a valid config", "error", 5000)
-    end
-end)
-sections.ConfigManagement:AddElement(elements.loadConfigButton)
+    end)
+    sections.ConfigManagement:AddElement(deleteConfigButton)
 
-local deleteConfigButton = Button:new("Delete Config", function()
-    local configName = elements.configNameInput.value
-    if configName and configName ~= "" and configName ~= "No configs found" then
-        if Library.ConfigSystem:DeleteConfig(configName) then
-            elements.configList.options = Library.ConfigSystem:GetConfigs()
-            elements.configNameInput:Set("")
-            Library.Notify("Config Deleted", "Successfully deleted config "..configName..".json")
-        else
-            Library.Notify("Config Error", "Failed to delete config: "..configName, "error", 5000)
-        end
-    else
-        Library.Notify("Config Error", "Please select a valid config", "error", 5000)
-    end
-end)
-sections.ConfigManagement:AddElement(deleteConfigButton)
+    local refreshConfigsButton = Button:new("Refresh List", function()
+        Library.ConfigSystem:GetConfigs()
+    end)
+    sections.ConfigManagement:AddElement(refreshConfigsButton)
+end, "Config Management 5")
 
-local refreshConfigsButton = Button:new("Refresh List", function()
-    Library.ConfigSystem:GetConfigs()
-end)
-sections.ConfigManagement:AddElement(refreshConfigsButton)
-
-sections.Watermark = tabs.Settings:AddSection("Watermark Settings", 320, 485, 300, 160)
-    
-elements.enableWatermark = Toggle:new("Enable Watermark", function(state)
-    if Library.Watermark then
-        Library.Watermark:SetVisible(state)
-    end
-end, true, "watermark_enabled")
-sections.Watermark:AddElement(elements.enableWatermark)
-
-elements.watermarkPosition = Dropdown:new("Position", 
-    {"top-right", "top-left", "bottom-right", "bottom-left"},
-    function(selected)
+QueueInitStep(function()
+    sections.Watermark = tabs.Settings:AddSection("Watermark Settings", 320, 485, 300, 160)
+        
+    elements.enableWatermark = Toggle:new("Enable Watermark", function(state)
         if Library.Watermark then
-            Library.Watermark:SetPosition(selected)
+            Library.Watermark:SetVisible(state)
         end
-    end, "top-right", "watermark_position")
-sections.Watermark:AddElement(elements.watermarkPosition)
+    end, true, "watermark_enabled")
+    sections.Watermark:AddElement(elements.enableWatermark)
+
+    elements.watermarkPosition = Dropdown:new("Position", 
+        {"top-right", "top-left", "bottom-right", "bottom-left"},
+        function(selected)
+            if Library.Watermark then
+                Library.Watermark:SetPosition(selected)
+            end
+        end, "top-right", "watermark_position")
+    sections.Watermark:AddElement(elements.watermarkPosition)
+end, "Watermark Settings")
+
 
 local aimbot = {
     locked_target = nil,
@@ -2304,9 +2746,7 @@ local function SafeUpdate()
         ProcessInitQueue()
         return
     end
-    
-    UpdateGameObjects()
-    
+        
     SafeExecute(function()
         if not game.is_focused() then return end
         UpdateInputState()
