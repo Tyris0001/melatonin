@@ -148,376 +148,98 @@ local AimbotConfig = {
 -- Enhanced Movement Tracker with Advanced Pattern Recognition
 local MovementTracker = {
     targets = {},
-    maxHistoryFrames = 30,
-    consistencyThreshold = 8,
-    crossingPointThreshold = 0.3,
-    patternAnalysisFrames = 15,
-    zigzagDetectionFrames = 10,
+    maxHistoryFrames = 10, -- Reduced from 30
     
     addMovement = function(self, targetId, velocity, position)
-        if not targetId or not position or not position.x or not position.y or not position.z then return end
+        if not targetId or not position then return end
         
-        if not self.targets[targetId] then
-            self.targets[targetId] = {
-                history = {},
-                lastPosition = vector(position.x, position.y, position.z),
-                consistentFrames = 0,
-                lastDirection = vector(0, 0, 0),
-                crossingPoint = vector(0, 0, 0),
-                crossingDetected = false,
-                directionChanges = 0,
-                
-                -- Enhanced pattern tracking
-                movementPatterns = {},
-                averageVelocity = vector(0, 0, 0),
-                velocityVariance = 0,
-                directionVariance = 0,
-                predictability = 0.5,
-                zigzagDetected = false,
-                zigzagFrequency = 0,
-                patternConfidence = 0,
-                strafePattern = {left = 0, right = 0, forward = 0, backward = 0},
-                
-                -- Timing analysis
-                firstContactTime = utility.get_tickcount(),
-                lastUpdateTime = utility.get_tickcount(),
-                totalObservationTime = 0,
-                
-                -- Behavioral analysis
-                reactiveMovement = false,
-                baselineEstablished = false,
-                baselineMovement = vector(0, 0, 0),
-                reactionThreshold = 3.0,
-            }
-        end
-        
-        local target = self.targets[targetId]
-        local currentTime = utility.get_tickcount()
-        target.lastUpdateTime = currentTime
-        target.totalObservationTime = currentTime - target.firstContactTime
-        
-        local currentDirection = vector(0, 0, 0)
-        local currentVelocity = vector(0, 0, 0)
-        
-        if velocity and velocity.x and velocity.y and velocity.z then
-            currentVelocity = vector(velocity.x, velocity.y, velocity.z)
-            local vel_magnitude = currentVelocity:length()
-            if vel_magnitude > 0.1 then
-                currentDirection = vector(velocity.x / vel_magnitude, velocity.y / vel_magnitude, velocity.z / vel_magnitude)
+        SafeExecute(function()
+            if not self.targets[targetId] then
+                self.targets[targetId] = {
+                    history = {},
+                    averageVelocity = vector(0, 0, 0),
+                    predictability = 0.5,
+                    lastUpdateTime = utility.get_tickcount()
+                }
             end
-        end
-        
-        -- Calculate direction change
-        local directionChange = 0
-        if target.lastDirection and currentDirection then
-            local lastDir = target.lastDirection
-            if lastDir.x and lastDir.y and lastDir.z and currentDirection.x and currentDirection.y and currentDirection.z then
-                directionChange = (lastDir.x * currentDirection.x) + (lastDir.y * currentDirection.y) + (lastDir.z * currentDirection.z)
-            end
-        end
-        
-        -- Track direction changes for zigzag detection
-        if directionChange < 0.3 and target.lastDirection:length() > 0.1 then
-            target.directionChanges = target.directionChanges + 1
-        end
-        
-        -- Update consistency tracking
-        if directionChange > 0.8 then
-            target.consistentFrames = math.min(target.consistentFrames + 1, self.maxHistoryFrames)
-        else
-            target.consistentFrames = 0
-        end
-        
-        -- Add to movement history
-        table.insert(target.history, {
-            velocity = currentVelocity,
-            position = vector(position.x, position.y, position.z),
-            direction = currentDirection,
-            timestamp = currentTime,
-            directionChange = directionChange
-        })
-        
-        if #target.history > self.maxHistoryFrames then
-            table.remove(target.history, 1)
-        end
-        
-        -- Enhanced pattern analysis
-        self:analyzeMovementPatterns(targetId)
-        self:detectZigzagPattern(targetId)
-        self:calculatePredictability(targetId)
-        self:detectReactiveMovement(targetId)
-        
-        target.lastDirection = currentDirection
-        target.lastPosition = vector(position.x, position.y, position.z)
-    end,
-    
-    -- Analyze movement patterns for better prediction
-    analyzeMovementPatterns = function(self, targetId)
-        local target = self.targets[targetId]
-        if not target or #target.history < self.patternAnalysisFrames then return end
-        
-        local recentHistory = {}
-        local startIdx = math.max(1, #target.history - self.patternAnalysisFrames + 1)
-        
-        for i = startIdx, #target.history do
-            table.insert(recentHistory, target.history[i])
-        end
-        
-        -- Calculate average velocity and variance
-        local totalVelocity = vector(0, 0, 0)
-        local velocityCount = 0
-        
-        for _, frame in ipairs(recentHistory) do
-            if frame.velocity then
-                totalVelocity.x = totalVelocity.x + frame.velocity.x
-                totalVelocity.y = totalVelocity.y + frame.velocity.y
-                totalVelocity.z = totalVelocity.z + frame.velocity.z
-                velocityCount = velocityCount + 1
-            end
-        end
-        
-        if velocityCount > 0 then
-            target.averageVelocity = vector(
-                totalVelocity.x / velocityCount,
-                totalVelocity.y / velocityCount,
-                totalVelocity.z / velocityCount
-            )
-        end
-        
-        -- Calculate velocity variance
-        local varianceSum = 0
-        for _, frame in ipairs(recentHistory) do
-            if frame.velocity then
-                local diff = vector(
-                    frame.velocity.x - target.averageVelocity.x,
-                    frame.velocity.y - target.averageVelocity.y,
-                    frame.velocity.z - target.averageVelocity.z
-                )
-                varianceSum = varianceSum + diff:length_sqr()
-            end
-        end
-        target.velocityVariance = velocityCount > 0 and (varianceSum / velocityCount) or 0
-        
-        -- Analyze strafe patterns
-        target.strafePattern = {left = 0, right = 0, forward = 0, backward = 0}
-        for _, frame in ipairs(recentHistory) do
-            if frame.velocity then
-                if frame.velocity.x > 1.0 then target.strafePattern.right = target.strafePattern.right + 1 end
-                if frame.velocity.x < -1.0 then target.strafePattern.left = target.strafePattern.left + 1 end
-                if frame.velocity.z > 1.0 then target.strafePattern.forward = target.strafePattern.forward + 1 end
-                if frame.velocity.z < -1.0 then target.strafePattern.backward = target.strafePattern.backward + 1 end
-            end
-        end
-    end,
-    
-    -- Detect zigzag movement patterns
-    detectZigzagPattern = function(self, targetId)
-        local target = self.targets[targetId]
-        if not target or #target.history < self.zigzagDetectionFrames then return end
-        
-        local recentFrames = math.min(self.zigzagDetectionFrames, #target.history)
-        local directionSwitches = 0
-        local lastXDirection = nil
-        local lastZDirection = nil
-        
-        for i = #target.history - recentFrames + 1, #target.history do
-            local frame = target.history[i]
-            if frame and frame.velocity then
-                local currentXDir = frame.velocity.x > 0.5 and 1 or (frame.velocity.x < -0.5 and -1 or 0)
-                local currentZDir = frame.velocity.z > 0.5 and 1 or (frame.velocity.z < -0.5 and -1 or 0)
-                
-                if lastXDirection and currentXDir ~= 0 and lastXDirection ~= currentXDir then
-                    directionSwitches = directionSwitches + 1
-                end
-                if lastZDirection and currentZDir ~= 0 and lastZDirection ~= currentZDir then
-                    directionSwitches = directionSwitches + 1
-                end
-                
-                if currentXDir ~= 0 then lastXDirection = currentXDir end
-                if currentZDir ~= 0 then lastZDirection = currentZDir end
-            end
-        end
-        
-        target.zigzagFrequency = directionSwitches / recentFrames
-        target.zigzagDetected = target.zigzagFrequency > 0.2
-    end,
-    
-    -- Calculate movement predictability score
-    calculatePredictability = function(self, targetId)
-        local target = self.targets[targetId]
-        if not target or #target.history < 5 then 
-            target.predictability = 0.5
-            return 
-        end
-        
-        local consistencyScore = math.min(target.consistentFrames / self.consistencyThreshold, 1.0)
-        local varianceScore = math.max(0, 1.0 - (target.velocityVariance / 100))
-        local zigzagPenalty = target.zigzagDetected and 0.2 or 0
-        local observationBonus = math.min(target.totalObservationTime / 5000, 0.2) -- 5 second observation bonus
-        
-        local basePredictability = (consistencyScore * 0.4) + (varianceScore * 0.4) + observationBonus
-        target.predictability = math.max(0.1, math.min(1.0, basePredictability - zigzagPenalty))
-        
-        -- Increase confidence over time if patterns are stable
-        if target.velocityVariance < 20 and not target.zigzagDetected then
-            target.patternConfidence = math.min(1.0, target.patternConfidence + 0.02)
-        else
-            target.patternConfidence = math.max(0, target.patternConfidence - 0.05)
-        end
-    end,
-    
-    -- Detect reactive movement (movement changes after being shot at)
-    detectReactiveMovement = function(self, targetId)
-        local target = self.targets[targetId]
-        if not target or #target.history < 10 then return end
-        
-        -- Establish baseline movement in first few seconds
-        if not target.baselineEstablished and target.totalObservationTime > 2000 then
-            local baselineFrames = math.min(8, #target.history)
-            local totalVel = vector(0, 0, 0)
             
-            for i = 1, baselineFrames do
-                local frame = target.history[i]
-                if frame and frame.velocity then
+            local target = self.targets[targetId]
+            local currentTime = utility.get_tickcount()
+            
+            if currentTime - target.lastUpdateTime < 50 then return end -- Throttle updates
+            
+            target.lastUpdateTime = currentTime
+            
+            local currentVelocity = vector(0, 0, 0)
+            if velocity and velocity.x and velocity.y and velocity.z then
+                currentVelocity = vector(velocity.x, velocity.y, velocity.z)
+            end
+            
+            table.insert(target.history, {
+                velocity = currentVelocity,
+                position = vector(position.x, position.y, position.z),
+                timestamp = currentTime
+            })
+            
+            if #target.history > self.maxHistoryFrames then
+                table.remove(target.history, 1)
+            end
+            
+            -- Simple average calculation
+            if #target.history > 3 then
+                local totalVel = vector(0, 0, 0)
+                for _, frame in ipairs(target.history) do
                     totalVel.x = totalVel.x + frame.velocity.x
                     totalVel.y = totalVel.y + frame.velocity.y
                     totalVel.z = totalVel.z + frame.velocity.z
                 end
-            end
-            
-            target.baselineMovement = vector(
-                totalVel.x / baselineFrames,
-                totalVel.y / baselineFrames,
-                totalVel.z / baselineFrames
-            )
-            target.baselineEstablished = true
-        end
-        
-        -- Check for sudden movement changes (reactive behavior)
-        if target.baselineEstablished and #target.history >= 3 then
-            local recentFrame = target.history[#target.history]
-            if recentFrame and recentFrame.velocity then
-                local velocityDifference = vector(
-                    recentFrame.velocity.x - target.baselineMovement.x,
-                    recentFrame.velocity.y - target.baselineMovement.y,
-                    recentFrame.velocity.z - target.baselineMovement.z
+                target.averageVelocity = vector(
+                    totalVel.x / #target.history,
+                    totalVel.y / #target.history,
+                    totalVel.z / #target.history
                 )
-                
-                target.reactiveMovement = velocityDifference:length() > target.reactionThreshold
             end
-        end
+        end, "MovementTracker.addMovement")
     end,
     
-    -- Enhanced prediction with pattern recognition
     getEnhancedPrediction = function(self, targetId, currentPos, predictionTime)
         local target = self.targets[targetId]
-        if not target or #target.history < 3 then
+        if not target or #target.history < 2 then
             return currentPos
         end
         
         local predictedPos = vector(currentPos.x, currentPos.y, currentPos.z)
+        local avgVel = target.averageVelocity
         
-        if target.zigzagDetected and target.patternConfidence > 0.2 then
-            -- For zigzag patterns, predict based on pattern frequency
-            local zigzagCycle = target.zigzagFrequency * predictionTime
-            local phaseOffset = (zigzagCycle % 1.0) * 2 * math.pi
-            
-            -- Apply sinusoidal movement prediction for zigzag
-            local amplitude = target.averageVelocity:length() * 0.5
-            local zigzagOffset = vector(
-                amplitude * math.sin(phaseOffset),
-                0,
-                amplitude * math.cos(phaseOffset * 0.7)
-            )
-            
-            predictedPos.x = predictedPos.x + (target.averageVelocity.x * predictionTime * 0.7) + zigzagOffset.x
-            predictedPos.z = predictedPos.z + (target.averageVelocity.z * predictionTime * 0.7) + zigzagOffset.z
-        else
-            -- For consistent movement, use pattern-based prediction
-            local confidenceMultiplier = target.patternConfidence
-            local baseVelocity = target.averageVelocity
-            
-            -- Account for strafe patterns
-            local strafeAdjustment = vector(0, 0, 0)
-            local totalStrafe = target.strafePattern.left + target.strafePattern.right + target.strafePattern.forward + target.strafePattern.backward
-            
-            if totalStrafe > 0 then
-                local leftRightRatio = (target.strafePattern.right - target.strafePattern.left) / totalStrafe
-                local forwardBackRatio = (target.strafePattern.forward - target.strafePattern.backward) / totalStrafe
-                
-                strafeAdjustment.x = leftRightRatio * baseVelocity:length() * 0.3
-                strafeAdjustment.z = forwardBackRatio * baseVelocity:length() * 0.3
-            end
-            
-            predictedPos.x = predictedPos.x + ((baseVelocity.x + strafeAdjustment.x) * predictionTime * confidenceMultiplier)
-            predictedPos.y = predictedPos.y + (baseVelocity.y * predictionTime * confidenceMultiplier)
-            predictedPos.z = predictedPos.z + ((baseVelocity.z + strafeAdjustment.z) * predictionTime * confidenceMultiplier)
-        end
+        predictedPos.x = predictedPos.x + (avgVel.x * predictionTime)
+        predictedPos.y = predictedPos.y + (avgVel.y * predictionTime)
+        predictedPos.z = predictedPos.z + (avgVel.z * predictionTime)
         
         return predictedPos
     end,
     
-    -- Calculate hitchance based on predictability and patterns
     calculateHitchance = function(self, targetId, distance, weaponAccuracy)
         local target = self.targets[targetId]
         if not target then return 50 end
         
         local basePredictability = target.predictability * 100
-        
-        -- Distance factor (closer = higher hitchance)
         local distanceFactor = math.max(0.3, 1.0 - (distance / 3000))
-        
-        -- Weapon accuracy factor
         local weaponFactor = weaponAccuracy or 0.8
         
-        -- Pattern stability factor
-        local stabilityFactor = 1.0
-        if target.zigzagDetected then
-            stabilityFactor = 0.6 - (target.zigzagFrequency * 0.3)
-        end
-        
-        -- Reactive movement penalty
-        local reactivePenalty = target.reactiveMovement and 0.8 or 1.0
-        
-        -- Observation time bonus (more observation = better prediction)
-        local observationBonus = math.min(target.totalObservationTime / 10000, 0.15)
-        
-        local hitchance = basePredictability * distanceFactor * weaponFactor * stabilityFactor * reactivePenalty + (observationBonus * 100)
-        
+        local hitchance = basePredictability * distanceFactor * weaponFactor
         return math.max(5, math.min(95, math.floor(hitchance)))
-    end,
-    
-    getPredictionScale = function(self, targetId)
-        local target = self.targets[targetId]
-        if not target then return 0.5 end
-        
-        return target.predictability
-    end,
-    
-    getCompensatedVelocity = function(self, targetId)
-        local target = self.targets[targetId]
-        if not target or not target.history or #target.history < 3 then
-            return vector(0, 0, 0)
-        end
-        
-        -- Use enhanced prediction for experimental mode
-        return target.averageVelocity or vector(0, 0, 0)
     end,
     
     cleanup = function(self)
         local currentTime = utility.get_tickcount()
         for targetId, target in pairs(self.targets) do
-            if target and target.history and #target.history > 0 then
-                local lastFrame = target.history[#target.history]
-                if lastFrame and lastFrame.timestamp and currentTime - lastFrame.timestamp > 5000 then
-                    self.targets[targetId] = nil
-                end
-            else
+            if not target.lastUpdateTime or currentTime - target.lastUpdateTime > 5000 then
                 self.targets[targetId] = nil
             end
         end
     end
 }
+
 
 local ESPConfig = {
     MainEnabled = true,
@@ -2575,95 +2297,129 @@ local windowVisible = true
 local lastInsertState = false
 local lastPlayerUpdate = 0
 
-local function Update()
-    if not game.is_focused() then return end
-    UpdateInputState()
+local function SafeUpdate()
+    ManageMemory()
     
-    aimbot:update()
+    if not ScriptState.initialized then
+        ProcessInitQueue()
+        return
+    end
+    
+    UpdateGameObjects()
+    
+    SafeExecute(function()
+        if not game.is_focused() then return end
+        UpdateInputState()
+        
+        if aimbot and AimbotConfig.enabled then
+            aimbot:update()
+        end
 
-    if Library.TargetHUD then
-        Library.TargetHUD:Update()
-    end
-    
-    if Library.ESP and Library.ESP.Enabled then
-        Library.ESP:Update() 
-    end
-    
-    if Library.Watermark then
-        Library.Watermark:Update() 
-    end
-    
-    local currentInsertState = utility.key_state(elements.menu_keybind.keyCode or 0x12)
-    if currentInsertState and not lastInsertState then
-        windowVisible = not windowVisible
-        MainWindow.visible = windowVisible
-    end
-    lastInsertState = currentInsertState
+        if Library.TargetHUD then
+            Library.TargetHUD:Update()
+        end
+        
+        if Library.ESP and Library.ESP.Enabled then
+            Library.ESP:Update() 
+        end
+        
+        if Library.Watermark then
+            Library.Watermark:Update() 
+        end
+        
+        -- Handle menu toggle
+        local currentInsertState = utility.key_state(elements.menu_keybind and elements.menu_keybind.keyCode or 0x12)
+        if currentInsertState and not lastInsertState then
+            windowVisible = not windowVisible
+            if MainWindow then
+                MainWindow.visible = windowVisible
+            end
+        end
+        lastInsertState = currentInsertState
 
-    local currentTime = utility.get_tickcount()
-    if currentTime - lastPlayerUpdate > 1000 then
-        pcall(function()
+        -- Update player list less frequently
+        local currentTime = utility.get_tickcount()
+        if currentTime - lastPlayerUpdate > 2000 then -- Increased interval
             if sections.MainPlayerList then
                 sections.MainPlayerList:UpdatePlayers()
             end
-        end)
-        lastPlayerUpdate = currentTime
-    end
-
-    if Library.KeybindsList and Library.KeybindsList.visible then
-        Library.KeybindsList:HandleInput() 
-    end
-    
-
-    if Library.KeybindsList and Library.KeybindsList.visible then
-        Library.KeybindsList:UpdatePosition() 
-    end
-    
-    for _, keybind in ipairs(Library.AllKeybinds or {}) do
-        keybind:UpdateState() 
-    end
-
-    if Library.TargetHUD and Library.TargetHUD.visible then
-        Library.TargetHUD:HandleInput()
-    end
-    
-    if elements.aimbotEnabled.keybind then
-        local currentKeyState = utility.key_state(AimbotConfig.keybind.key)
-        AimbotConfig.keybind.active = currentKeyState
-    end
-    
-    on_update()
+            lastPlayerUpdate = currentTime
+        end
+        
+        -- Update keybinds
+        for _, keybind in ipairs(Library.AllKeybinds or {}) do
+            if keybind and keybind.UpdateState then
+                keybind:UpdateState() 
+            end
+        end
+        
+        if elements.aimbotEnabled and elements.aimbotEnabled.keybind then
+            local currentKeyState = utility.key_state(AimbotConfig.keybind.key)
+            AimbotConfig.keybind.active = currentKeyState
+        end
+        
+        on_update()
+    end, "Main Update")
 end
 
-local function Render()
-    if not game.is_focused() then return end
+local function SafeUpdateSlow()
+    if not ScriptState.initialized then return end
     
-    aimbot:render()
-    
-    if Library.ESP and Library.ESP.Enabled then
-        Library.ESP:RenderPlayers() 
-    end
-    
-    on_paint()
-
-    if Library.TargetHUD then
-        Library.TargetHUD:Render()
-    end
-    
-    if Library.KeybindsList then
-        Library.KeybindsList:Render() 
-    end
-   
-
-    if Library.Watermark then
-        Library.Watermark:Render()
-    end
-
-    if Library.Notifications then
-        Library.Notifications:RenderAll()
-    end
+    SafeExecute(function()
+        on_update_slow()
+    end, "Update Slow")
 end
 
-cheat.set_callback("update", Update)
-cheat.set_callback("update_slow", on_update_slow)
-cheat.set_callback("paint", Render)
+local function SafeRender()
+    if not ScriptState.initialized then 
+        -- Show loading indicator
+        local w, h = cheat.get_window_size()
+        render.text(w/2 - 50, h/2, 255, 255, 255, 255, 2, true, "Loading...")
+        return 
+    end
+    
+    SafeExecute(function()
+        if not game.is_focused() then return end
+        
+        if aimbot and AimbotConfig.enabled then
+            aimbot:render()
+        end
+        
+        if Library.ESP and Library.ESP.Enabled then
+            Library.ESP:RenderPlayers() 
+        end
+        
+        on_paint()
+
+        if Library.TargetHUD then
+            Library.TargetHUD:Render()
+        end
+        
+        if Library.KeybindsList then
+            Library.KeybindsList:Render() 
+        end
+
+        if Library.Watermark then
+            Library.Watermark:Render()
+        end
+
+        if Library.Notifications then
+            Library.Notifications:RenderAll()
+        end
+    end, "Main Render")
+end
+
+-- Register callbacks with error handling
+cheat.set_callback("update", SafeUpdate)
+cheat.set_callback("update_slow", SafeUpdateSlow)
+cheat.set_callback("paint", SafeRender)
+
+-- Add cleanup on shutdown
+cheat.set_callback("shutdown", function()
+    SafeExecute(function()
+        if Library and Library.Cleanup then
+            Library.Cleanup()
+        end
+        collectgarbage("collect")
+    end, "Shutdown")
+end)
