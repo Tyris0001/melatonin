@@ -1,78 +1,25 @@
-collectgarbage("collect")
+-- Shedhook Fallen Survival - Loader Compatible Version
+-- This script is designed to be loaded from the Shedhook Loader
 
--- CRASH MITIGATION: Add error handling and initialization control
-local ScriptState = {
-    initialized = false,
-    uiCreated = false,
-    errorCount = 0,
-    maxErrors = 10,
-    lastError = 0
-}
-
-local function SafeExecute(func, errorMsg)
-    local success, result = pcall(func)
-    if not success then
-        ScriptState.errorCount = ScriptState.errorCount + 1
-        ScriptState.lastError = utility.get_tickcount()
-        utility.log((errorMsg or "Error") .. ": " .. tostring(result))
-        
-        if ScriptState.errorCount > ScriptState.maxErrors then
-            utility.log("Too many errors, disabling script")
-            return false
-        end
-    end
-    return success, result
-end
-
--- Memory management
-local frameCount = 0
-local function ManageMemory()
-    frameCount = frameCount + 1
-    if frameCount % 500 == 0 then
-        collectgarbage("collect")
-    end
-end
-
+-- Check if UI Library is available from loader
 local Library = _G.UILIB
-local UI = Library.Init({
-    Title = "shedhook fallen survival",
-    Theme = "Abyss",
-    Watermark = {
-        title = "shedhook",
-        template = "$TITLE | $PLAYER | $FPS FPS | $PINGms Latency",
-        position = "top-right"
-    }
+if not Library then
+    error("UI Library not found! Please run this script through the Shedhook Loader.")
+end
+
+-- Clean up any existing UI elements from loader
+Library.Cleanup()
+
+-- Set theme and initialize
+Library.Theme.Selected = "Abyss"
+Library.RefreshTheme()
+
+-- Create watermark
+Library.CreateWatermark({
+    title = "shedhook",
+    template = "$TITLE | $PLAYER | $FPS FPS | $PINGms Latency",
+    position = "top-right"
 })
-
-local InitializationQueue = {
-    currentStep = 0,
-    steps = {},
-    completed = false
-}
-
-local function QueueInitStep(stepFunc, stepName)
-    table.insert(InitializationQueue.steps, {func = stepFunc, name = stepName})
-end
-
-local function ProcessInitQueue()
-    if InitializationQueue.completed then return end
-    
-    local currentTime = utility.get_tickcount()
-    if currentTime - (InitializationQueue.lastStep or 0) < 100 then return end -- Delay between steps
-    
-    InitializationQueue.currentStep = InitializationQueue.currentStep + 1
-    local step = InitializationQueue.steps[InitializationQueue.currentStep]
-    
-    if step then
-        SafeExecute(step.func, "Initialization step: " .. step.name)
-        InitializationQueue.lastStep = currentTime
-        utility.log("Initialized: " .. step.name)
-    else
-        InitializationQueue.completed = true
-        ScriptState.initialized = true
-        utility.log("Script initialization completed")
-    end
-end
 
 local MainWindow = Library.Window({
     Title = "shedhook",
@@ -178,98 +125,376 @@ local AimbotConfig = {
 -- Enhanced Movement Tracker with Advanced Pattern Recognition
 local MovementTracker = {
     targets = {},
-    maxHistoryFrames = 10, -- Reduced from 30
+    maxHistoryFrames = 30,
+    consistencyThreshold = 8,
+    crossingPointThreshold = 0.3,
+    patternAnalysisFrames = 15,
+    zigzagDetectionFrames = 10,
     
     addMovement = function(self, targetId, velocity, position)
-        if not targetId or not position then return end
+        if not targetId or not position or not position.x or not position.y or not position.z then return end
         
-        SafeExecute(function()
-            if not self.targets[targetId] then
-                self.targets[targetId] = {
-                    history = {},
-                    averageVelocity = vector(0, 0, 0),
-                    predictability = 0.5,
-                    lastUpdateTime = utility.get_tickcount()
-                }
+        if not self.targets[targetId] then
+            self.targets[targetId] = {
+                history = {},
+                lastPosition = vector(position.x, position.y, position.z),
+                consistentFrames = 0,
+                lastDirection = vector(0, 0, 0),
+                crossingPoint = vector(0, 0, 0),
+                crossingDetected = false,
+                directionChanges = 0,
+                
+                -- Enhanced pattern tracking
+                movementPatterns = {},
+                averageVelocity = vector(0, 0, 0),
+                velocityVariance = 0,
+                directionVariance = 0,
+                predictability = 0.5,
+                zigzagDetected = false,
+                zigzagFrequency = 0,
+                patternConfidence = 0,
+                strafePattern = {left = 0, right = 0, forward = 0, backward = 0},
+                
+                -- Timing analysis
+                firstContactTime = utility.get_tickcount(),
+                lastUpdateTime = utility.get_tickcount(),
+                totalObservationTime = 0,
+                
+                -- Behavioral analysis
+                reactiveMovement = false,
+                baselineEstablished = false,
+                baselineMovement = vector(0, 0, 0),
+                reactionThreshold = 3.0,
+            }
+        end
+        
+        local target = self.targets[targetId]
+        local currentTime = utility.get_tickcount()
+        target.lastUpdateTime = currentTime
+        target.totalObservationTime = currentTime - target.firstContactTime
+        
+        local currentDirection = vector(0, 0, 0)
+        local currentVelocity = vector(0, 0, 0)
+        
+        if velocity and velocity.x and velocity.y and velocity.z then
+            currentVelocity = vector(velocity.x, velocity.y, velocity.z)
+            local vel_magnitude = currentVelocity:length()
+            if vel_magnitude > 0.1 then
+                currentDirection = vector(velocity.x / vel_magnitude, velocity.y / vel_magnitude, velocity.z / vel_magnitude)
             end
-            
-            local target = self.targets[targetId]
-            local currentTime = utility.get_tickcount()
-            
-            if currentTime - target.lastUpdateTime < 50 then return end -- Throttle updates
-            
-            target.lastUpdateTime = currentTime
-            
-            local currentVelocity = vector(0, 0, 0)
-            if velocity and velocity.x and velocity.y and velocity.z then
-                currentVelocity = vector(velocity.x, velocity.y, velocity.z)
+        end
+        
+        -- Calculate direction change
+        local directionChange = 0
+        if target.lastDirection and currentDirection then
+            local lastDir = target.lastDirection
+            if lastDir.x and lastDir.y and lastDir.z and currentDirection.x and currentDirection.y and currentDirection.z then
+                directionChange = (lastDir.x * currentDirection.x) + (lastDir.y * currentDirection.y) + (lastDir.z * currentDirection.z)
             end
-            
-            table.insert(target.history, {
-                velocity = currentVelocity,
-                position = vector(position.x, position.y, position.z),
-                timestamp = currentTime
-            })
-            
-            if #target.history > self.maxHistoryFrames then
-                table.remove(target.history, 1)
+        end
+        
+        -- Track direction changes for zigzag detection
+        if directionChange < 0.3 and target.lastDirection:length() > 0.1 then
+            target.directionChanges = target.directionChanges + 1
+        end
+        
+        -- Update consistency tracking
+        if directionChange > 0.8 then
+            target.consistentFrames = math.min(target.consistentFrames + 1, self.maxHistoryFrames)
+        else
+            target.consistentFrames = 0
+        end
+        
+        -- Add to movement history
+        table.insert(target.history, {
+            velocity = currentVelocity,
+            position = vector(position.x, position.y, position.z),
+            direction = currentDirection,
+            timestamp = currentTime,
+            directionChange = directionChange
+        })
+        
+        if #target.history > self.maxHistoryFrames then
+            table.remove(target.history, 1)
+        end
+        
+        -- Enhanced pattern analysis
+        self:analyzeMovementPatterns(targetId)
+        self:detectZigzagPattern(targetId)
+        self:calculatePredictability(targetId)
+        self:detectReactiveMovement(targetId)
+        
+        target.lastDirection = currentDirection
+        target.lastPosition = vector(position.x, position.y, position.z)
+    end,
+    
+    -- Analyze movement patterns for better prediction
+    analyzeMovementPatterns = function(self, targetId)
+        local target = self.targets[targetId]
+        if not target or #target.history < self.patternAnalysisFrames then return end
+        
+        local recentHistory = {}
+        local startIdx = math.max(1, #target.history - self.patternAnalysisFrames + 1)
+        
+        for i = startIdx, #target.history do
+            table.insert(recentHistory, target.history[i])
+        end
+        
+        -- Calculate average velocity and variance
+        local totalVelocity = vector(0, 0, 0)
+        local velocityCount = 0
+        
+        for _, frame in ipairs(recentHistory) do
+            if frame.velocity then
+                totalVelocity.x = totalVelocity.x + frame.velocity.x
+                totalVelocity.y = totalVelocity.y + frame.velocity.y
+                totalVelocity.z = totalVelocity.z + frame.velocity.z
+                velocityCount = velocityCount + 1
             end
+        end
+        
+        if velocityCount > 0 then
+            target.averageVelocity = vector(
+                totalVelocity.x / velocityCount,
+                totalVelocity.y / velocityCount,
+                totalVelocity.z / velocityCount
+            )
+        end
+        
+        -- Calculate velocity variance
+        local varianceSum = 0
+        for _, frame in ipairs(recentHistory) do
+            if frame.velocity then
+                local diff = vector(
+                    frame.velocity.x - target.averageVelocity.x,
+                    frame.velocity.y - target.averageVelocity.y,
+                    frame.velocity.z - target.averageVelocity.z
+                )
+                varianceSum = varianceSum + diff:length_sqr()
+            end
+        end
+        target.velocityVariance = velocityCount > 0 and (varianceSum / velocityCount) or 0
+        
+        -- Analyze strafe patterns
+        target.strafePattern = {left = 0, right = 0, forward = 0, backward = 0}
+        for _, frame in ipairs(recentHistory) do
+            if frame.velocity then
+                if frame.velocity.x > 1.0 then target.strafePattern.right = target.strafePattern.right + 1 end
+                if frame.velocity.x < -1.0 then target.strafePattern.left = target.strafePattern.left + 1 end
+                if frame.velocity.z > 1.0 then target.strafePattern.forward = target.strafePattern.forward + 1 end
+                if frame.velocity.z < -1.0 then target.strafePattern.backward = target.strafePattern.backward + 1 end
+            end
+        end
+    end,
+    
+    -- Detect zigzag movement patterns
+    detectZigzagPattern = function(self, targetId)
+        local target = self.targets[targetId]
+        if not target or #target.history < self.zigzagDetectionFrames then return end
+        
+        local recentFrames = math.min(self.zigzagDetectionFrames, #target.history)
+        local directionSwitches = 0
+        local lastXDirection = nil
+        local lastZDirection = nil
+        
+        for i = #target.history - recentFrames + 1, #target.history do
+            local frame = target.history[i]
+            if frame and frame.velocity then
+                local currentXDir = frame.velocity.x > 0.5 and 1 or (frame.velocity.x < -0.5 and -1 or 0)
+                local currentZDir = frame.velocity.z > 0.5 and 1 or (frame.velocity.z < -0.5 and -1 or 0)
+                
+                if lastXDirection and currentXDir ~= 0 and lastXDirection ~= currentXDir then
+                    directionSwitches = directionSwitches + 1
+                end
+                if lastZDirection and currentZDir ~= 0 and lastZDirection ~= currentZDir then
+                    directionSwitches = directionSwitches + 1
+                end
+                
+                if currentXDir ~= 0 then lastXDirection = currentXDir end
+                if currentZDir ~= 0 then lastZDirection = currentZDir end
+            end
+        end
+        
+        target.zigzagFrequency = directionSwitches / recentFrames
+        target.zigzagDetected = target.zigzagFrequency > 0.2
+    end,
+    
+    -- Calculate movement predictability score
+    calculatePredictability = function(self, targetId)
+        local target = self.targets[targetId]
+        if not target or #target.history < 5 then 
+            target.predictability = 0.5
+            return 
+        end
+        
+        local consistencyScore = math.min(target.consistentFrames / self.consistencyThreshold, 1.0)
+        local varianceScore = math.max(0, 1.0 - (target.velocityVariance / 100))
+        local zigzagPenalty = target.zigzagDetected and 0.2 or 0
+        local observationBonus = math.min(target.totalObservationTime / 5000, 0.2) -- 5 second observation bonus
+        
+        local basePredictability = (consistencyScore * 0.4) + (varianceScore * 0.4) + observationBonus
+        target.predictability = math.max(0.1, math.min(1.0, basePredictability - zigzagPenalty))
+        
+        -- Increase confidence over time if patterns are stable
+        if target.velocityVariance < 20 and not target.zigzagDetected then
+            target.patternConfidence = math.min(1.0, target.patternConfidence + 0.02)
+        else
+            target.patternConfidence = math.max(0, target.patternConfidence - 0.05)
+        end
+    end,
+    
+    -- Detect reactive movement (movement changes after being shot at)
+    detectReactiveMovement = function(self, targetId)
+        local target = self.targets[targetId]
+        if not target or #target.history < 10 then return end
+        
+        -- Establish baseline movement in first few seconds
+        if not target.baselineEstablished and target.totalObservationTime > 2000 then
+            local baselineFrames = math.min(8, #target.history)
+            local totalVel = vector(0, 0, 0)
             
-            -- Simple average calculation
-            if #target.history > 3 then
-                local totalVel = vector(0, 0, 0)
-                for _, frame in ipairs(target.history) do
+            for i = 1, baselineFrames do
+                local frame = target.history[i]
+                if frame and frame.velocity then
                     totalVel.x = totalVel.x + frame.velocity.x
                     totalVel.y = totalVel.y + frame.velocity.y
                     totalVel.z = totalVel.z + frame.velocity.z
                 end
-                target.averageVelocity = vector(
-                    totalVel.x / #target.history,
-                    totalVel.y / #target.history,
-                    totalVel.z / #target.history
-                )
             end
-        end, "MovementTracker.addMovement")
+            
+            target.baselineMovement = vector(
+                totalVel.x / baselineFrames,
+                totalVel.y / baselineFrames,
+                totalVel.z / baselineFrames
+            )
+            target.baselineEstablished = true
+        end
+        
+        -- Check for sudden movement changes (reactive behavior)
+        if target.baselineEstablished and #target.history >= 3 then
+            local recentFrame = target.history[#target.history]
+            if recentFrame and recentFrame.velocity then
+                local velocityDifference = vector(
+                    recentFrame.velocity.x - target.baselineMovement.x,
+                    recentFrame.velocity.y - target.baselineMovement.y,
+                    recentFrame.velocity.z - target.baselineMovement.z
+                )
+                
+                target.reactiveMovement = velocityDifference:length() > target.reactionThreshold
+            end
+        end
     end,
     
+    -- Enhanced prediction with pattern recognition
     getEnhancedPrediction = function(self, targetId, currentPos, predictionTime)
         local target = self.targets[targetId]
-        if not target or #target.history < 2 then
+        if not target or #target.history < 3 then
             return currentPos
         end
         
         local predictedPos = vector(currentPos.x, currentPos.y, currentPos.z)
-        local avgVel = target.averageVelocity
         
-        predictedPos.x = predictedPos.x + (avgVel.x * predictionTime)
-        predictedPos.y = predictedPos.y + (avgVel.y * predictionTime)
-        predictedPos.z = predictedPos.z + (avgVel.z * predictionTime)
+        if target.zigzagDetected and target.patternConfidence > 0.2 then
+            -- For zigzag patterns, predict based on pattern frequency
+            local zigzagCycle = target.zigzagFrequency * predictionTime
+            local phaseOffset = (zigzagCycle % 1.0) * 2 * math.pi
+            
+            -- Apply sinusoidal movement prediction for zigzag
+            local amplitude = target.averageVelocity:length() * 0.5
+            local zigzagOffset = vector(
+                amplitude * math.sin(phaseOffset),
+                0,
+                amplitude * math.cos(phaseOffset * 0.7)
+            )
+            
+            predictedPos.x = predictedPos.x + (target.averageVelocity.x * predictionTime * 0.7) + zigzagOffset.x
+            predictedPos.z = predictedPos.z + (target.averageVelocity.z * predictionTime * 0.7) + zigzagOffset.z
+        else
+            -- For consistent movement, use pattern-based prediction
+            local confidenceMultiplier = target.patternConfidence
+            local baseVelocity = target.averageVelocity
+            
+            -- Account for strafe patterns
+            local strafeAdjustment = vector(0, 0, 0)
+            local totalStrafe = target.strafePattern.left + target.strafePattern.right + target.strafePattern.forward + target.strafePattern.backward
+            
+            if totalStrafe > 0 then
+                local leftRightRatio = (target.strafePattern.right - target.strafePattern.left) / totalStrafe
+                local forwardBackRatio = (target.strafePattern.forward - target.strafePattern.backward) / totalStrafe
+                
+                strafeAdjustment.x = leftRightRatio * baseVelocity:length() * 0.3
+                strafeAdjustment.z = forwardBackRatio * baseVelocity:length() * 0.3
+            end
+            
+            predictedPos.x = predictedPos.x + ((baseVelocity.x + strafeAdjustment.x) * predictionTime * confidenceMultiplier)
+            predictedPos.y = predictedPos.y + (baseVelocity.y * predictionTime * confidenceMultiplier)
+            predictedPos.z = predictedPos.z + ((baseVelocity.z + strafeAdjustment.z) * predictionTime * confidenceMultiplier)
+        end
         
         return predictedPos
     end,
     
+    -- Calculate hitchance based on predictability and patterns
     calculateHitchance = function(self, targetId, distance, weaponAccuracy)
         local target = self.targets[targetId]
         if not target then return 50 end
         
         local basePredictability = target.predictability * 100
+        
+        -- Distance factor (closer = higher hitchance)
         local distanceFactor = math.max(0.3, 1.0 - (distance / 3000))
+        
+        -- Weapon accuracy factor
         local weaponFactor = weaponAccuracy or 0.8
         
-        local hitchance = basePredictability * distanceFactor * weaponFactor
+        -- Pattern stability factor
+        local stabilityFactor = 1.0
+        if target.zigzagDetected then
+            stabilityFactor = 0.6 - (target.zigzagFrequency * 0.3)
+        end
+        
+        -- Reactive movement penalty
+        local reactivePenalty = target.reactiveMovement and 0.8 or 1.0
+        
+        -- Observation time bonus (more observation = better prediction)
+        local observationBonus = math.min(target.totalObservationTime / 10000, 0.15)
+        
+        local hitchance = basePredictability * distanceFactor * weaponFactor * stabilityFactor * reactivePenalty + (observationBonus * 100)
+        
         return math.max(5, math.min(95, math.floor(hitchance)))
+    end,
+    
+    getPredictionScale = function(self, targetId)
+        local target = self.targets[targetId]
+        if not target then return 0.5 end
+        
+        return target.predictability
+    end,
+    
+    getCompensatedVelocity = function(self, targetId)
+        local target = self.targets[targetId]
+        if not target or not target.history or #target.history < 3 then
+            return vector(0, 0, 0)
+        end
+        
+        -- Use enhanced prediction for experimental mode
+        return target.averageVelocity or vector(0, 0, 0)
     end,
     
     cleanup = function(self)
         local currentTime = utility.get_tickcount()
         for targetId, target in pairs(self.targets) do
-            if not target.lastUpdateTime or currentTime - target.lastUpdateTime > 5000 then
+            if target and target.history and #target.history > 0 then
+                local lastFrame = target.history[#target.history]
+                if lastFrame and lastFrame.timestamp and currentTime - lastFrame.timestamp > 5000 then
+                    self.targets[targetId] = nil
+                end
+            else
                 self.targets[targetId] = nil
             end
         end
     end
 }
-
 
 local ESPConfig = {
     MainEnabled = true,
@@ -351,235 +576,120 @@ local ESPConfig = {
         BodyBag = {255, 0, 0, 255}
     }
 }
-QueueInitStep(function()
-    MainWindow = Library.Window({
-        Title = "shedhook",
-        X = 100,
-        Y = 100,
-        Width = 630,
-        Height = 650
-    })
-end, "Main Window")
 
-QueueInitStep(function()
-    elements = {}
-    sections = {}
-    tabs = {}
-    multiSections = {}
-end, "Variables")
+tabs.Legit = MainWindow:AddTab("Aimbot")
+tabs.Visuals = MainWindow:AddTab("Visuals")
+tabs.Entities = MainWindow:AddTab("Entities")
+tabs.Player = MainWindow:AddTab("Players")
+tabs.Settings = MainWindow:AddTab("Settings")
 
-QueueInitStep(function()
-    tabs.Legit = MainWindow:AddTab("Aimbot")
-    tabs.Visuals = MainWindow:AddTab("Visuals")
-end, "Basic Tabs")
+sections.Aimbot = tabs.Legit:AddSection("Aimbot", 10, 60, 300, 530)
+sections.Prediction = tabs.Legit:AddMultiSection("Prediction", {"General", "Spear", "Bow", "Crossbow", "Nailgun"}, 320, 60, 300, 530)
 
-QueueInitStep(function()
-    tabs.Entities = MainWindow:AddTab("Entities")
-    tabs.Player = MainWindow:AddTab("Players")
-    tabs.Settings = MainWindow:AddTab("Settings")
-end, "Remaining Tabs")
+elements.aimbotEnabled = Toggle:new("Enabled", function(state)
+    AimbotConfig.enabled = state
+end, AimbotConfig.enabled, "aimbot_enabled")
 
-QueueInitStep(function()
-    sections.Aimbot = tabs.Legit:AddSection("Aimbot", 10, 60, 300, 530)
-    sections.Prediction = tabs.Legit:AddMultiSection("Prediction", {"General", "Spear", "Bow", "Crossbow", "Nailgun"}, 320, 60, 300, 530)
-end, "Aimbot Sections")
+elements.aimbotEnabled.keybind = elements.aimbotEnabled:AddKeybind(AimbotConfig.keybind.key, "Hold")
+sections.Aimbot:AddElement(elements.aimbotEnabled)
 
-QueueInitStep(function()
-    elements.aimbotEnabled = Toggle:new("Enabled", function(state)
-        AimbotConfig.enabled = state
-    end, AimbotConfig.enabled, "aimbot_enabled")
-    elements.aimbotEnabled.keybind = elements.aimbotEnabled:AddKeybind(AimbotConfig.keybind.key, "Hold")
-    sections.Aimbot:AddElement(elements.aimbotEnabled)
-end, "Aimbot Toggle")
+elements.aimbotMode = Dropdown:new("Mode", {"mouse", "silent"}, function(selected)
+    AimbotConfig.mode = selected
+end, AimbotConfig.mode, "aimbot_mode")
+sections.Aimbot:AddElement(elements.aimbotMode)
 
-QueueInitStep(function()
-    elements.aimbotMode = Dropdown:new("Mode", {"mouse", "silent"}, function(selected)
-        AimbotConfig.mode = selected
-    end, AimbotConfig.mode, "aimbot_mode")
-    sections.Aimbot:AddElement(elements.aimbotMode)
-    
-    elements.aimbotVisible = Toggle:new("Visible Only", function(state)
-        AimbotConfig.visible = state
-    end, AimbotConfig.visible, "aimbot_visible")
-    sections.Aimbot:AddElement(elements.aimbotVisible)
-end, "Aimbot Mode & Visible")
+elements.aimbotVisible = Toggle:new("Visible Only", function(state)
+    AimbotConfig.visible = state
+end, AimbotConfig.visible, "aimbot_visible")
+sections.Aimbot:AddElement(elements.aimbotVisible)
 
-QueueInitStep(function()
-    elements.aimbotTargets = MultiSelectDropdown:new("Target Types", {"Players", "Soldiers", "Animals", "Whitelisteds"}, function(selected)
-        AimbotConfig.targets = selected
-    end, AimbotConfig.targets, "aimbot_targets")
-    sections.Aimbot:AddElement(elements.aimbotTargets)
-    
-    elements.aimbotSticky = Toggle:new("Sticky Target", function(state)
-        AimbotConfig.sticky = state
-    end, AimbotConfig.sticky, "aimbot_sticky")
-    sections.Aimbot:AddElement(elements.aimbotSticky)
-end, "Aimbot Targets")
+elements.aimbotTargets = MultiSelectDropdown:new("Target Types", {"Players", "Soldiers", "Animals", "Whitelisteds"}, function(selected)
+    AimbotConfig.targets = selected
+end, AimbotConfig.targets, "aimbot_targets")
+sections.Aimbot:AddElement(elements.aimbotTargets)
 
-QueueInitStep(function()
-    elements.aimbotTargetSelection = Dropdown:new("Target Selection", {"Closest to crosshair", "Closest to Player", "Lowest HP"}, function(selected)
-        AimbotConfig.targetSelection = selected
-    end, AimbotConfig.targetSelection, "aimbot_target_selection")
-    sections.Aimbot:AddElement(elements.aimbotTargetSelection)
-end, "Target Selection")
+elements.aimbotSticky = Toggle:new("Sticky Target", function(state)
+    AimbotConfig.sticky = state
+end, AimbotConfig.sticky, "aimbot_sticky")
+sections.Aimbot:AddElement(elements.aimbotSticky)
 
-QueueInitStep(function()
-    elements.aimbotHitboxes = MultiSelectDropdown:new("Hitboxes", {
-        "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", 
-        "RightUpperArm", "RightLowerArm", "LeftUpperLeg", "LeftLowerLeg", 
-        "RightUpperLeg", "RightLowerLeg", "LeftHand", "RightHand", "LeftFoot", "RightFoot"
-    }, function(selected)
-        AimbotConfig.hitboxes = selected
-    end, AimbotConfig.hitboxes, "aimbot_hitboxes")
-    sections.Aimbot:AddElement(elements.aimbotHitboxes)
-end, "Aimbot Hitboxes")
+elements.aimbotTargetSelection = Dropdown:new("Target Selection", {"Closest to crosshair", "Closest to Player", "Lowest HP"}, function(selected)
+    AimbotConfig.targetSelection = selected
+end, AimbotConfig.targetSelection, "aimbot_target_selection")
+sections.Aimbot:AddElement(elements.aimbotTargetSelection)
 
-QueueInitStep(function()
-    elements.aimbotFOV = Slider:new("FOV", 0, 1000, AimbotConfig.fov, function(value)
-        AimbotConfig.fov = value
-    end, "aimbot_fov")
-    sections.Aimbot:AddElement(elements.aimbotFOV)
-end, "FOV Slider")
+elements.aimbotHitboxes = MultiSelectDropdown:new("Hitboxes", {
+    "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", 
+    "RightUpperArm", "RightLowerArm", "LeftUpperLeg", "LeftLowerLeg", 
+    "RightUpperLeg", "RightLowerLeg", "LeftHand", "RightHand", "LeftFoot", "RightFoot"
+}, function(selected)
+    AimbotConfig.hitboxes = selected
+end, AimbotConfig.hitboxes, "aimbot_hitboxes")
+sections.Aimbot:AddElement(elements.aimbotHitboxes)
 
-QueueInitStep(function()
-    elements.aimbotVisualizeFOV = Toggle:new("Visualize FOV", function(state)
-        AimbotConfig.visualizeFOV = state
-    end, AimbotConfig.visualizeFOV, "aimbot_visualize_fov")
-    elements.aimbotVisualizeFOV:AddColorPicker("FOV Color", function(color)
-        AimbotConfig.visualizeFOVColor = color
-    end, AimbotConfig.visualizeFOVColor, "aimbot_visualize_fov_color")
-    sections.Aimbot:AddElement(elements.aimbotVisualizeFOV)
-end, "FOV Visualization")
+elements.aimbotFOV = Slider:new("FOV", 0, 1000, AimbotConfig.fov, function(value)
+    AimbotConfig.fov = value
+end, "aimbot_fov")
+sections.Aimbot:AddElement(elements.aimbotFOV)
 
-QueueInitStep(function()
-    elements.aimbotVisualizeFOVFilled = Toggle:new("FOV Filled", function(state)
-        AimbotConfig.fovCircleFilled = state
-    end, AimbotConfig.fovCircleFilled, "aimbot_visualize_fov_filled")
-    elements.aimbotVisualizeFOVFilled:AddColorPicker("FOV Fill Color", function(color)
-        AimbotConfig.fovCircleFilledColor = color
-    end, AimbotConfig.fovCircleFilledColor, "aimbot_visualize_fov_filled_color")
-    sections.Aimbot:AddElement(elements.aimbotVisualizeFOVFilled)
-end, "FOV Filled")
+elements.aimbotVisualizeFOV = Toggle:new("Visualize FOV", function(state)
+    AimbotConfig.visualizeFOV = state
+end, AimbotConfig.visualizeFOV, "aimbot_visualize_fov")
+elements.aimbotVisualizeFOV:AddColorPicker("FOV Color", function(color)
+    AimbotConfig.visualizeFOVColor = color
+end, AimbotConfig.visualizeFOVColor, "aimbot_visualize_fov_color")
+sections.Aimbot:AddElement(elements.aimbotVisualizeFOV)
 
-QueueInitStep(function()
-    elements.aimbotMouseMovement = Dropdown:new("Mouse Movement", {"Linear", "Exponential", "Curved"}, function(selected)
-        AimbotConfig.mouseMovement = selected
-    end, AimbotConfig.mouseMovement, "aimbot_mouse_movement")
-    sections.Aimbot:AddElement(elements.aimbotMouseMovement)
-    
-    elements.aimbotSpeed = Slider:new("Speed", 0, 100, AimbotConfig.speed, function(value)
-        AimbotConfig.speed = value
-    end, "aimbot_speed")
-    sections.Aimbot:AddElement(elements.aimbotSpeed)
-end, "Mouse Movement")
+elements.aimbotVisualizeFOVFilled = Toggle:new("FOV Filled", function(state)
+    AimbotConfig.fovCircleFilled = state
+end, AimbotConfig.fovCircleFilled, "aimbot_visualize_fov_filled")
+elements.aimbotVisualizeFOVFilled:AddColorPicker("FOV Fill Color", function(color)
+    AimbotConfig.fovCircleFilledColor = color
+end, AimbotConfig.fovCircleFilledColor, "aimbot_visualize_fov_filled_color")
+sections.Aimbot:AddElement(elements.aimbotVisualizeFOVFilled)
 
-QueueInitStep(function()
-    elements.aimbotSmoothingEnabled = Toggle:new("Enable Smoothing", function(state)
-        AimbotConfig.smoothingEnabled = state
-    end, AimbotConfig.smoothingEnabled, "aimbot_smoothing_enabled")
-    sections.Aimbot:AddElement(elements.aimbotSmoothingEnabled)
-    
-    elements.aimbotSmoothing = Slider:new("Smoothing", 1, 50, AimbotConfig.smoothing, function(value)
-        AimbotConfig.smoothing = value
-    end, "aimbot_smoothing")
-    sections.Aimbot:AddElement(elements.aimbotSmoothing)
-end, "Smoothing")
+elements.aimbotMouseMovement = Dropdown:new("Mouse Movement", {"Linear", "Exponential", "Curved"}, function(selected)
+    AimbotConfig.mouseMovement = selected
+end, AimbotConfig.mouseMovement, "aimbot_mouse_movement")
+sections.Aimbot:AddElement(elements.aimbotMouseMovement)
 
-QueueInitStep(function()
-    elements.aimbotMaxDistance = Slider:new("Max Distance", 100, 5000, AimbotConfig.maxDistance, function(value)
-        AimbotConfig.maxDistance = value
-    end, "aimbot_max_distance")
-    sections.Aimbot:AddElement(elements.aimbotMaxDistance)
-end, "Max Distance")
+elements.aimbotSpeed = Slider:new("Speed", 0, 100, AimbotConfig.speed, function(value)
+    AimbotConfig.speed = value
+end, "aimbot_speed")
+sections.Aimbot:AddElement(elements.aimbotSpeed)
 
-QueueInitStep(function()
-    elements.aimbotVisualizeTarget = Toggle:new("Visualize Target", function(state)
-        AimbotConfig.visualizeTarget = state
-    end, AimbotConfig.visualizeTarget, "aimbot_visualize_target")
-    elements.aimbotVisualizeTarget:AddColorPicker("Target Color", function(color)
-        AimbotConfig.targetColor = color
-    end, AimbotConfig.targetColor, "aimbot_target_color")
-    sections.Aimbot:AddElement(elements.aimbotVisualizeTarget)
-end, "Target Visualization")
+elements.aimbotSmoothingEnabled = Toggle:new("Enable Smoothing", function(state)
+    AimbotConfig.smoothingEnabled = state
+end, AimbotConfig.smoothingEnabled, "aimbot_smoothing_enabled")
+sections.Aimbot:AddElement(elements.aimbotSmoothingEnabled)
 
-QueueInitStep(function()
-    elements.showHitchance = Toggle:new("Show Hitchance", function(state)
-        AimbotConfig.showHitchance = state
-    end, AimbotConfig.showHitchance, "show_hitchance")
-    sections.Aimbot:AddElement(elements.showHitchance)
-end, "Hitchance")
+elements.aimbotSmoothing = Slider:new("Smoothing", 1, 50, AimbotConfig.smoothing, function(value)
+    AimbotConfig.smoothing = value
+end, "aimbot_smoothing")
+sections.Aimbot:AddElement(elements.aimbotSmoothing)
 
-QueueInitStep(function()
-    -- General weapon prediction
-    local weapon = "General"
-    local weaponIndex = 1
-    
-    elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
-        AimbotConfig.weapons[weapon].predictionEnabled = state
-    end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionEnabled"], weaponIndex)
+elements.aimbotMaxDistance = Slider:new("Max Distance", 100, 5000, AimbotConfig.maxDistance, function(value)
+    AimbotConfig.maxDistance = value
+end, "aimbot_max_distance")
+sections.Aimbot:AddElement(elements.aimbotMaxDistance)
 
-    elements[weapon.."_predictionMethod"] = Dropdown:new("Prediction Method", {"Regular", "Experimental"}, function(selected)
-        AimbotConfig.weapons[weapon].predictionMethod = selected
-    end, AimbotConfig.weapons[weapon].predictionMethod, string.format("%s_prediction_method", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionMethod"], weaponIndex)
-end, "General Weapon Prediction 1")
+elements.aimbotVisualizeTarget = Toggle:new("Visualize Target", function(state)
+    AimbotConfig.visualizeTarget = state
+end, AimbotConfig.visualizeTarget, "aimbot_visualize_target")
+elements.aimbotVisualizeTarget:AddColorPicker("Target Color", function(color)
+    AimbotConfig.targetColor = color
+end, AimbotConfig.targetColor, "aimbot_target_color")
+sections.Aimbot:AddElement(elements.aimbotVisualizeTarget)
 
-QueueInitStep(function()
-    local weapon = "General"
-    local weaponIndex = 1
-    
-    elements[weapon.."_predictionStrength"] = Slider:new("Prediction Strength", 0.1, 5.0, AimbotConfig.weapons[weapon].predictionStrength, function(value)
-        AimbotConfig.weapons[weapon].predictionStrength = value
-    end, string.format("%s_prediction_strength", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionStrength"], weaponIndex)
+-- Hitchance settings
+elements.showHitchance = Toggle:new("Show Hitchance", function(state)
+    AimbotConfig.showHitchance = state
+end, AimbotConfig.showHitchance, "show_hitchance")
+sections.Aimbot:AddElement(elements.showHitchance)
 
-    elements[weapon.."_bulletVelocity"] = Slider:new("Bullet Velocity", 200, 3000, AimbotConfig.weapons[weapon].bulletVelocity, function(value)
-        AimbotConfig.weapons[weapon].bulletVelocity = value
-    end, string.format("%s_bullet_velocity", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_bulletVelocity"], weaponIndex)
-end, "General Weapon Prediction 2")
 
-QueueInitStep(function()
-    local weapon = "General"
-    local weaponIndex = 1
-    
-    elements[weapon.."_gravity"] = Slider:new("Gravity", 0, 300, AimbotConfig.weapons[weapon].gravity, function(value)
-        AimbotConfig.weapons[weapon].gravity = value
-    end, string.format("%s_gravity", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_gravity"], weaponIndex)
-
-    elements[weapon.."_bulletDrop"] = Slider:new("Bullet Drop", 0.0, 30.0, AimbotConfig.weapons[weapon].bulletDrop, function(value)
-        AimbotConfig.weapons[weapon].bulletDrop = value
-    end, string.format("%s_bullet_drop", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
-end, "General Weapon Prediction 3")
-
-QueueInitStep(function()
-    local weapon = "General"
-    local weaponIndex = 1
-    
-    elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
-        AimbotConfig.weapons[weapon].visualizePrediction = state
-    end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_visualizePrediction"], weaponIndex)
-
-    elements[weapon.."_predictionVisualizationType"] = Dropdown:new("Visualization Type", {"Line", "Circle", "Dot"}, function(selected)
-        AimbotConfig.weapons[weapon].predictionVisualizationType = selected
-    end, AimbotConfig.weapons[weapon].predictionVisualizationType, string.format("%s_prediction_visualization_type", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionVisualizationType"], weaponIndex)
-
-    elements[weapon.."_predictionColor"] = ColorPicker:new("Prediction Color", function(color)
-        AimbotConfig.weapons[weapon].predictionColor = color
-    end, AimbotConfig.weapons[weapon].predictionColor)
-    sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
-end, "General Weapon Prediction 4")
-
-QueueInitStep(function()
-    -- Spear weapon prediction
-    local weapon = "Spear"
-    local weaponIndex = 2
-    
+local weaponIndex = 1
+for _, weapon in ipairs({"General", "Spear", "Bow", "Crossbow", "Nailgun"}) do
     elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
         AimbotConfig.weapons[weapon].predictionEnabled = state
     end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
@@ -594,12 +704,7 @@ QueueInitStep(function()
         AimbotConfig.weapons[weapon].predictionStrength = value
     end, string.format("%s_prediction_strength", weapon))
     sections.Prediction:AddElement(elements[weapon.."_predictionStrength"], weaponIndex)
-end, "Spear Weapon Prediction 1")
 
-QueueInitStep(function()
-    local weapon = "Spear"
-    local weaponIndex = 2
-    
     elements[weapon.."_bulletVelocity"] = Slider:new("Bullet Velocity", 200, 3000, AimbotConfig.weapons[weapon].bulletVelocity, function(value)
         AimbotConfig.weapons[weapon].bulletVelocity = value
     end, string.format("%s_bullet_velocity", weapon))
@@ -614,12 +719,7 @@ QueueInitStep(function()
         AimbotConfig.weapons[weapon].bulletDrop = value
     end, string.format("%s_bullet_drop", weapon))
     sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
-end, "Spear Weapon Prediction 2")
 
-QueueInitStep(function()
-    local weapon = "Spear"
-    local weaponIndex = 2
-    
     elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
         AimbotConfig.weapons[weapon].visualizePrediction = state
     end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
@@ -634,862 +734,575 @@ QueueInitStep(function()
         AimbotConfig.weapons[weapon].predictionColor = color
     end, AimbotConfig.weapons[weapon].predictionColor)
     sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
-end, "Spear Weapon Prediction 3")
-
-QueueInitStep(function()
-    -- Bow weapon prediction
-    local weapon = "Bow"
-    local weaponIndex = 3
     
-    elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
-        AimbotConfig.weapons[weapon].predictionEnabled = state
-    end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionEnabled"], weaponIndex)
-
-    elements[weapon.."_predictionMethod"] = Dropdown:new("Prediction Method", {"Regular", "Experimental"}, function(selected)
-        AimbotConfig.weapons[weapon].predictionMethod = selected
-    end, AimbotConfig.weapons[weapon].predictionMethod, string.format("%s_prediction_method", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionMethod"], weaponIndex)
-
-    elements[weapon.."_predictionStrength"] = Slider:new("Prediction Strength", 0.1, 5.0, AimbotConfig.weapons[weapon].predictionStrength, function(value)
-        AimbotConfig.weapons[weapon].predictionStrength = value
-    end, string.format("%s_prediction_strength", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionStrength"], weaponIndex)
-end, "Bow Weapon Prediction 1")
-
-QueueInitStep(function()
-    local weapon = "Bow"
-    local weaponIndex = 3
-    
-    elements[weapon.."_bulletVelocity"] = Slider:new("Bullet Velocity", 200, 3000, AimbotConfig.weapons[weapon].bulletVelocity, function(value)
-        AimbotConfig.weapons[weapon].bulletVelocity = value
-    end, string.format("%s_bullet_velocity", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_bulletVelocity"], weaponIndex)
-
-    elements[weapon.."_gravity"] = Slider:new("Gravity", 0, 300, AimbotConfig.weapons[weapon].gravity, function(value)
-        AimbotConfig.weapons[weapon].gravity = value
-    end, string.format("%s_gravity", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_gravity"], weaponIndex)
-
-    elements[weapon.."_bulletDrop"] = Slider:new("Bullet Drop", 0.0, 30.0, AimbotConfig.weapons[weapon].bulletDrop, function(value)
-        AimbotConfig.weapons[weapon].bulletDrop = value
-    end, string.format("%s_bullet_drop", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
-end, "Bow Weapon Prediction 2")
-
-QueueInitStep(function()
-    local weapon = "Bow"
-    local weaponIndex = 3
-    
-    elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
-        AimbotConfig.weapons[weapon].visualizePrediction = state
-    end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_visualizePrediction"], weaponIndex)
-
-    elements[weapon.."_predictionVisualizationType"] = Dropdown:new("Visualization Type", {"Line", "Circle", "Dot"}, function(selected)
-        AimbotConfig.weapons[weapon].predictionVisualizationType = selected
-    end, AimbotConfig.weapons[weapon].predictionVisualizationType, string.format("%s_prediction_visualization_type", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionVisualizationType"], weaponIndex)
-
-    elements[weapon.."_predictionColor"] = ColorPicker:new("Prediction Color", function(color)
-        AimbotConfig.weapons[weapon].predictionColor = color
-    end, AimbotConfig.weapons[weapon].predictionColor)
-    sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
-end, "Bow Weapon Prediction 3")
-
-QueueInitStep(function()
-    -- Crossbow weapon prediction
-    local weapon = "Crossbow"
-    local weaponIndex = 4
-    
-    elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
-        AimbotConfig.weapons[weapon].predictionEnabled = state
-    end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionEnabled"], weaponIndex)
-
-    elements[weapon.."_predictionMethod"] = Dropdown:new("Prediction Method", {"Regular", "Experimental"}, function(selected)
-        AimbotConfig.weapons[weapon].predictionMethod = selected
-    end, AimbotConfig.weapons[weapon].predictionMethod, string.format("%s_prediction_method", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionMethod"], weaponIndex)
-
-    elements[weapon.."_predictionStrength"] = Slider:new("Prediction Strength", 0.1, 5.0, AimbotConfig.weapons[weapon].predictionStrength, function(value)
-        AimbotConfig.weapons[weapon].predictionStrength = value
-    end, string.format("%s_prediction_strength", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionStrength"], weaponIndex)
-end, "Crossbow Weapon Prediction 1")
-
-QueueInitStep(function()
-    local weapon = "Crossbow"
-    local weaponIndex = 4
-    
-    elements[weapon.."_bulletVelocity"] = Slider:new("Bullet Velocity", 200, 3000, AimbotConfig.weapons[weapon].bulletVelocity, function(value)
-        AimbotConfig.weapons[weapon].bulletVelocity = value
-    end, string.format("%s_bullet_velocity", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_bulletVelocity"], weaponIndex)
-
-    elements[weapon.."_gravity"] = Slider:new("Gravity", 0, 300, AimbotConfig.weapons[weapon].gravity, function(value)
-        AimbotConfig.weapons[weapon].gravity = value
-    end, string.format("%s_gravity", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_gravity"], weaponIndex)
-
-    elements[weapon.."_bulletDrop"] = Slider:new("Bullet Drop", 0.0, 30.0, AimbotConfig.weapons[weapon].bulletDrop, function(value)
-        AimbotConfig.weapons[weapon].bulletDrop = value
-    end, string.format("%s_bullet_drop", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
-end, "Crossbow Weapon Prediction 2")
-
-QueueInitStep(function()
-    local weapon = "Crossbow"
-    local weaponIndex = 4
-    
-    elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
-        AimbotConfig.weapons[weapon].visualizePrediction = state
-    end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_visualizePrediction"], weaponIndex)
-
-    elements[weapon.."_predictionVisualizationType"] = Dropdown:new("Visualization Type", {"Line", "Circle", "Dot"}, function(selected)
-        AimbotConfig.weapons[weapon].predictionVisualizationType = selected
-    end, AimbotConfig.weapons[weapon].predictionVisualizationType, string.format("%s_prediction_visualization_type", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionVisualizationType"], weaponIndex)
-
-    elements[weapon.."_predictionColor"] = ColorPicker:new("Prediction Color", function(color)
-        AimbotConfig.weapons[weapon].predictionColor = color
-    end, AimbotConfig.weapons[weapon].predictionColor)
-    sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
-end, "Crossbow Weapon Prediction 3")
-
-QueueInitStep(function()
-    -- Nailgun weapon prediction
-    local weapon = "Nailgun"
-    local weaponIndex = 5
-    
-    elements[weapon.."_predictionEnabled"] = Toggle:new(string.format("Enable %s Prediction", weapon), function(state)
-        AimbotConfig.weapons[weapon].predictionEnabled = state
-    end, AimbotConfig.weapons[weapon].predictionEnabled, string.format("%s_prediction_enabled", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionEnabled"], weaponIndex)
-
-    elements[weapon.."_predictionMethod"] = Dropdown:new("Prediction Method", {"Regular", "Experimental"}, function(selected)
-        AimbotConfig.weapons[weapon].predictionMethod = selected
-    end, AimbotConfig.weapons[weapon].predictionMethod, string.format("%s_prediction_method", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionMethod"], weaponIndex)
-
-    elements[weapon.."_predictionStrength"] = Slider:new("Prediction Strength", 0.1, 5.0, AimbotConfig.weapons[weapon].predictionStrength, function(value)
-        AimbotConfig.weapons[weapon].predictionStrength = value
-    end, string.format("%s_prediction_strength", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionStrength"], weaponIndex)
-end, "Nailgun Weapon Prediction 1")
-
-QueueInitStep(function()
-    local weapon = "Nailgun"
-    local weaponIndex = 5
-    
-    elements[weapon.."_bulletVelocity"] = Slider:new("Bullet Velocity", 200, 3000, AimbotConfig.weapons[weapon].bulletVelocity, function(value)
-        AimbotConfig.weapons[weapon].bulletVelocity = value
-    end, string.format("%s_bullet_velocity", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_bulletVelocity"], weaponIndex)
-
-    elements[weapon.."_gravity"] = Slider:new("Gravity", 0, 300, AimbotConfig.weapons[weapon].gravity, function(value)
-        AimbotConfig.weapons[weapon].gravity = value
-    end, string.format("%s_gravity", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_gravity"], weaponIndex)
-
-    elements[weapon.."_bulletDrop"] = Slider:new("Bullet Drop", 0.0, 30.0, AimbotConfig.weapons[weapon].bulletDrop, function(value)
-        AimbotConfig.weapons[weapon].bulletDrop = value
-    end, string.format("%s_bullet_drop", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_bulletDrop"], weaponIndex)
-end, "Nailgun Weapon Prediction 2")
-
-QueueInitStep(function()
-    local weapon = "Nailgun"
-    local weaponIndex = 5
-    
-    elements[weapon.."_visualizePrediction"] = Toggle:new("Visualize Prediction", function(state)
-        AimbotConfig.weapons[weapon].visualizePrediction = state
-    end, AimbotConfig.weapons[weapon].visualizePrediction, string.format("%s_visualize_prediction", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_visualizePrediction"], weaponIndex)
-
-    elements[weapon.."_predictionVisualizationType"] = Dropdown:new("Visualization Type", {"Line", "Circle", "Dot"}, function(selected)
-        AimbotConfig.weapons[weapon].predictionVisualizationType = selected
-    end, AimbotConfig.weapons[weapon].predictionVisualizationType, string.format("%s_prediction_visualization_type", weapon))
-    sections.Prediction:AddElement(elements[weapon.."_predictionVisualizationType"], weaponIndex)
-
-    elements[weapon.."_predictionColor"] = ColorPicker:new("Prediction Color", function(color)
-        AimbotConfig.weapons[weapon].predictionColor = color
-    end, AimbotConfig.weapons[weapon].predictionColor)
-    sections.Prediction:AddElement(elements[weapon.."_predictionColor"], weaponIndex)
-end, "Nailgun Weapon Prediction 3")
-
-QueueInitStep(function()
-    sections.ESPPreview = tabs.Visuals:AddESPPreview("ESP Preview", 10, 60, 250, 350)
-    sections.ESPSettings = tabs.Visuals:AddSection("ESP Settings", 270, 60, 350, 530)
-end, "ESP Sections")
-
-QueueInitStep(function()
-    elements.enableESP = Toggle:new("Enable ESP", function(state)
-        Library.ESP.Enabled = state
-    end, Library.ESP.Enabled, "esp_enabled")
-    sections.ESPSettings:AddElement(elements.enableESP)
-end, "ESP Enable")
-
-QueueInitStep(function()
-    elements.boxToggle = Toggle:new("Box ESP", function(state)
-        Library.ESP.Show2DBox = state
-        Library.ESPPreview.Components.Box = state
-    end, Library.ESP.Show2DBox, "esp_box")
-    elements.boxToggle:AddColorPicker("Box Color", function(color)
-        Library.ESP.Colors.Box = color
-        Library.ESPPreview.Colors.Box = color
-    end, Library.ESP.Colors.Box)
-    sections.ESPSettings:AddElement(elements.boxToggle)
-end, "ESP Box")
-
-QueueInitStep(function()
-    elements.healthBarToggle = Toggle:new("Health Bar", function(state)
-        Library.ESP.ShowHealth = state
-        Library.ESPPreview.Components.HealthBar = state
-    end, Library.ESP.ShowHealth, "esp_healthbar")
-    sections.ESPSettings:AddElement(elements.healthBarToggle)
-end, "ESP Health Bar")
-
-QueueInitStep(function()
-    elements.nameToggle = Toggle:new("Name ESP", function(state)
-        Library.ESP.ShowName = state
-        Library.ESPPreview.Components.Name = state
-    end, Library.ESP.ShowName, "esp_name")
-    elements.nameToggle:AddColorPicker("Name Color", function(color)
-        Library.ESP.Colors.Name = color
-        Library.ESPPreview.Colors.Name = color
-    end, Library.ESP.Colors.Name)
-    sections.ESPSettings:AddElement(elements.nameToggle)
-end, "ESP Name")
-
-QueueInitStep(function()
-    elements.showTagsToggle = Toggle:new("Show Tags", function(state)
-        Library.ESP.ShowTags = state
-    end, Library.ESP.ShowTags, "esp_show_tags")
-    sections.ESPSettings:AddElement(elements.showTagsToggle)
-end, "ESP Tags")
-
-QueueInitStep(function()
-    elements.distanceToggle = Toggle:new("Distance ESP", function(state)
-        Library.ESP.ShowDistance = state
-        Library.ESPPreview.Components.Distance = state
-    end, Library.ESP.ShowDistance, "esp_distance")
-    elements.distanceToggle:AddColorPicker("Distance Color", function(color)
-        Library.ESP.Colors.Distance = color
-        Library.ESPPreview.Colors.Distance = color
-    end, Library.ESP.Colors.Distance)
-    sections.ESPSettings:AddElement(elements.distanceToggle)
-end, "ESP Distance")
-
-QueueInitStep(function()
-    elements.weaponToggle = Toggle:new("Weapon ESP", function(state)
-        Library.ESP.ShowWeapon = state
-        Library.ESPPreview.Components.Weapon = state
-    end, Library.ESP.ShowWeapon, "esp_weapon")
-    elements.weaponToggle:AddColorPicker("Weapon Color", function(color)
-        Library.ESP.Colors.Weapon = color
-        Library.ESPPreview.Colors.Weapon = color
-    end, Library.ESP.Colors.Weapon)
-    sections.ESPSettings:AddElement(elements.weaponToggle)
-end, "ESP Weapon")
-
-QueueInitStep(function()
-    elements.skeletonToggle = Toggle:new("Skeleton ESP", function(state)
-        Library.ESP.ShowSkeleton = state
-        Library.ESPPreview.Components.Skeleton = state
-    end, Library.ESP.ShowSkeleton, "esp_skeleton")
-    elements.skeletonToggle:AddColorPicker("Skeleton Color", function(color)
-        Library.ESP.Colors.Skeleton = color
-        Library.ESPPreview.Colors.Skeleton = color
-    end, Library.ESP.Colors.Skeleton)
-    sections.ESPSettings:AddElement(elements.skeletonToggle)
-end, "ESP Skeleton")
-
-QueueInitStep(function()
-    elements.flagsToggle = Toggle:new("Flags ESP", function(state)
-        Library.ESP.ShowFlags = state
-        Library.ESPPreview.Components.Flags = state
-    end, Library.ESP.ShowFlags, "esp_flags")
-    elements.flagsToggle:AddColorPicker("Flags Color", function(color)
-        Library.ESP.Colors.Flags = color
-        Library.ESPPreview.Colors.Flags = color
-    end, Library.ESP.Colors.Flags)
-    sections.ESPSettings:AddElement(elements.flagsToggle)
-end, "ESP Flags")
-
-QueueInitStep(function()
-    elements.onlyEnemiesToggle = Toggle:new("Only Enemies", function(state)
-        Library.ESP.OnlyEnemies = state
-    end, Library.ESP.OnlyEnemies, "esp_only_enemies")
-    sections.ESPSettings:AddElement(elements.onlyEnemiesToggle)
-end, "ESP Only Enemies")
-
-QueueInitStep(function()
-    elements.enemyColorPicker = ColorPicker:new("Enemy Color", function(color)
-        Library.ESP.Colors.Enemy = color
-    end, Library.ESP.Colors.Enemy)
-    sections.ESPSettings:AddElement(elements.enemyColorPicker)
-
-    elements.friendlyColorPicker = ColorPicker:new("Friendly Color", function(color)
-        Library.ESP.Colors.Friendly = color
-    end, Library.ESP.Colors.Friendly)
-    sections.ESPSettings:AddElement(elements.friendlyColorPicker)
-end, "ESP Entity Colors")
-
-QueueInitStep(function()
-    elements.maxDistanceSlider = Slider:new("Max Distance", 100, 20000, Library.ESP.MaxDistance, function(value)
-        Library.ESP.MaxDistance = value
-    end, "esp_max_distance")
-    sections.ESPSettings:AddElement(elements.maxDistanceSlider)
-end, "ESP Max Distance")
-
-QueueInitStep(function()
-    sections.ESPMain = tabs.Entities:AddSection("ESP Main Controls", 10, 60, 300, 150)
-    
-    elements.enableMainESP = Toggle:new("Enable ESP", function(state)
-        ESPConfig.MainEnabled = state
-    end, ESPConfig.MainEnabled, "main_esp_enabled")
-    sections.ESPMain:AddElement(elements.enableMainESP)
-
-    elements.antiClutter = Toggle:new("Anti-Clutter", function(state)
-        ESPConfig.AntiClutter = state
-    end, ESPConfig.AntiClutter, "anti_clutter_enabled")
-    sections.ESPMain:AddElement(elements.antiClutter)
-end, "Entity ESP Main")
-
-QueueInitStep(function()
-    local ResourceCategories = {"Ores", "Plants", "World Items", "Loot"}
-    multiSections.Resources = tabs.Entities:AddMultiSection("Resources ESP", ResourceCategories, 10, 220, 300, 350)
-end, "Resources MultiSection")
-
-QueueInitStep(function()
-    elements.oresMainToggle = Toggle:new("Enable Ores ESP", function(state)
-        ESPConfig.OresEnabled = state
-    end, ESPConfig.OresEnabled, "ores_main_enabled")
-    multiSections.Resources:AddElement(elements.oresMainToggle, 1)
-
-    elements.oresMultiSelect = MultiSelectDropdown:new("Ore Types", 
-        {"Stone", "Metal", "Phosphate"}, 
-        function(selected)
-            ESPConfig.SelectedOres = selected
-        end, 
-        ESPConfig.SelectedOres, 
-        "selected_ores")
-    multiSections.Resources:AddElement(elements.oresMultiSelect, 1)
-end, "Ores ESP 1")
-
-QueueInitStep(function()
-    elements.stoneColorPicker = ColorPicker:new("Stone Color", function(color)
-        ESPConfig.Colors.Stone = color
-    end, ESPConfig.Colors.Stone)
-    multiSections.Resources:AddElement(elements.stoneColorPicker, 1)
-
-    elements.metalColorPicker = ColorPicker:new("Metal Color", function(color)
-        ESPConfig.Colors.Metal = color
-    end, ESPConfig.Colors.Metal)
-    multiSections.Resources:AddElement(elements.metalColorPicker, 1)
-
-    elements.phosphateColorPicker = ColorPicker:new("Phosphate Color", function(color)
-        ESPConfig.Colors.Phosphate = color
-    end, ESPConfig.Colors.Phosphate)
-    multiSections.Resources:AddElement(elements.phosphateColorPicker, 1)
-end, "Ores ESP 2")
-
-QueueInitStep(function()
-    elements.oresDistance = Slider:new("Ores Distance", 100, 3000, ESPConfig.OresDistance, function(value)
-        ESPConfig.OresDistance = value
-    end, "ores_distance")
-    multiSections.Resources:AddElement(elements.oresDistance, 1)
-
-    elements.oresShowDistance = Toggle:new("Show Distance", function(state)
-        ESPConfig.OresShowDistance = state
-    end, ESPConfig.OresShowDistance, "ores_show_distance")
-    multiSections.Resources:AddElement(elements.oresShowDistance, 1)
-
-    elements.oresTracers = Toggle:new("Ores Tracers", function(state)
-        ESPConfig.OresTracers = state
-    end, ESPConfig.OresTracers, "ores_tracers")
-    multiSections.Resources:AddElement(elements.oresTracers, 1)
-end, "Ores ESP 3")
-
-QueueInitStep(function()
-    elements.plantsMainToggle = Toggle:new("Enable Plants ESP", function(state)
-        ESPConfig.PlantsEnabled = state
-    end, ESPConfig.PlantsEnabled, "plants_main_enabled")
-    multiSections.Resources:AddElement(elements.plantsMainToggle, 2)
-
-    elements.plantsMultiSelect = MultiSelectDropdown:new("Plant Types", 
-        {"Wool", "Raspberry", "Corn", "Tomato", "Blueberry", "Lemon"}, 
-        function(selected)
-            ESPConfig.SelectedPlants = selected
-        end, 
-        ESPConfig.SelectedPlants, 
-        "selected_plants")
-    multiSections.Resources:AddElement(elements.plantsMultiSelect, 2)
-end, "Plants ESP 1")
-
-QueueInitStep(function()
-    local plantTypes = {"Wool", "Raspberry", "Corn"}
-    for _, plant in ipairs(plantTypes) do
-        elements[plant:lower() .. "ColorPicker"] = ColorPicker:new(plant .. " Color", function(color)
-            ESPConfig.Colors[plant] = color
-        end, ESPConfig.Colors[plant])
-        multiSections.Resources:AddElement(elements[plant:lower() .. "ColorPicker"], 2)
-    end
-end, "Plants ESP Colors 1")
-
-QueueInitStep(function()
-    local plantTypes = {"Tomato", "Blueberry", "Lemon"}
-    for _, plant in ipairs(plantTypes) do
-        elements[plant:lower() .. "ColorPicker"] = ColorPicker:new(plant .. " Color", function(color)
-            ESPConfig.Colors[plant] = color
-        end, ESPConfig.Colors[plant])
-        multiSections.Resources:AddElement(elements[plant:lower() .. "ColorPicker"], 2)
-    end
-end, "Plants ESP Colors 2")
-
-QueueInitStep(function()
-    elements.plantsDistance = Slider:new("Plants Distance", 100, 4000, ESPConfig.PlantsDistance, function(value)
-        ESPConfig.PlantsDistance = value
-    end, "plants_distance")
-    multiSections.Resources:AddElement(elements.plantsDistance, 2)
-
-    elements.plantsShowDistance = Toggle:new("Show Distance", function(state)
-        ESPConfig.PlantsShowDistance = state
-    end, ESPConfig.PlantsShowDistance, "plants_show_distance")
-    multiSections.Resources:AddElement(elements.plantsShowDistance, 2)
-
-    elements.plantsTracers = Toggle:new("Plants Tracers", function(state)
-        ESPConfig.PlantsTracers = state
-    end, ESPConfig.PlantsTracers, "plants_tracers")
-    multiSections.Resources:AddElement(elements.plantsTracers, 2)
-end, "Plants ESP 2")
-
-QueueInitStep(function()
-    elements.dropsToggle = Toggle:new("Drops ESP", function(state)
-        ESPConfig.DropsEnabled = state
-    end, ESPConfig.DropsEnabled, "drops_enabled")
-    elements.dropsToggle:AddColorPicker("Drops Color", function(color)
-        ESPConfig.Colors.Drops = color
-    end, ESPConfig.Colors.Drops, "drops_color")
-    multiSections.Resources:AddElement(elements.dropsToggle, 3)
-
-    elements.dropsDistance = Slider:new("Drops Distance", 100, 4000, ESPConfig.DropsDistance, function(value)
-        ESPConfig.DropsDistance = value
-    end, "drops_distance")
-    multiSections.Resources:AddElement(elements.dropsDistance, 3)
-end, "World Items 1")
-
-QueueInitStep(function()
-    elements.digPileToggle = Toggle:new("DigPile ESP", function(state)
-        ESPConfig.DigPileEnabled = state
-    end, ESPConfig.DigPileEnabled, "digpile_enabled")
-    elements.digPileToggle:AddColorPicker("DigPile Color", function(color)
-        ESPConfig.Colors.DigPile = color
-    end, ESPConfig.Colors.DigPile, "digpile_color")
-    multiSections.Resources:AddElement(elements.digPileToggle, 3)
-
-    elements.digPileDistance = Slider:new("DigPile Distance", 100, 4000, ESPConfig.DigPileDistance, function(value)
-        ESPConfig.DigPileDistance = value
-    end, "digpile_distance")
-    multiSections.Resources:AddElement(elements.digPileDistance, 3)
-end, "World Items 2")
-
-QueueInitStep(function()
-    elements.keycardToggle = Toggle:new("Keycard ESP", function(state)
-        ESPConfig.KeycardEnabled = state
-    end, ESPConfig.KeycardEnabled, "keycard_enabled")
-    elements.keycardToggle:AddColorPicker("Keycard Color", function(color)
-        ESPConfig.Colors.Keycard = color
-    end, ESPConfig.Colors.Keycard, "keycard_color")
-    multiSections.Resources:AddElement(elements.keycardToggle, 4)
-
-    elements.monumentSpawnsToggle = Toggle:new("Monument Spawns ESP", function(state)
-        ESPConfig.MonumentSpawnsEnabled = state
-    end, ESPConfig.MonumentSpawnsEnabled, "monument_spawns_enabled")
-    multiSections.Resources:AddElement(elements.monumentSpawnsToggle, 4)
-end, "Loot 1")
-
-QueueInitStep(function()
-    elements.lootMultiSelect = MultiSelectDropdown:new("Loot Types", 
-        {"TrashCan", "OilBarrel", "LockedWoodenCrate", "LockedMetalCrate", "FoodCrate"}, 
-        function(selected)
-            ESPConfig.SelectedLoot = selected
-        end, 
-        ESPConfig.SelectedLoot, 
-        "selected_loot")
-    multiSections.Resources:AddElement(elements.lootMultiSelect, 4)
-end, "Loot 2")
-
-QueueInitStep(function()
-    local lootTypes = {"TrashCan", "OilBarrel", "LockedWoodenCrate"}
-    for _, loot in ipairs(lootTypes) do
-        local displayName = loot:gsub("([A-Z])", " %1"):gsub("^%s+", "")
-        elements[loot:lower() .. "ColorPicker"] = ColorPicker:new(displayName .. " Color", function(color)
-            ESPConfig.Colors[loot] = color
-        end, ESPConfig.Colors[loot])
-        multiSections.Resources:AddElement(elements[loot:lower() .. "ColorPicker"], 4)
-    end
-end, "Loot Colors 1")
-
-QueueInitStep(function()
-    local lootTypes = {"LockedMetalCrate", "FoodCrate"}
-    for _, loot in ipairs(lootTypes) do
-        local displayName = loot:gsub("([A-Z])", " %1"):gsub("^%s+", "")
-        elements[loot:lower() .. "ColorPicker"] = ColorPicker:new(displayName .. " Color", function(color)
-            ESPConfig.Colors[loot] = color
-        end, ESPConfig.Colors[loot])
-        multiSections.Resources:AddElement(elements[loot:lower() .. "ColorPicker"], 4)
-    end
-end, "Loot Colors 2")
-
-QueueInitStep(function()
-    local EntityCategories = {"Soldiers", "Animals", "Players", "Misc"}
-    multiSections.Entities = tabs.Entities:AddMultiSection("Entities ESP", EntityCategories, 320, 220, 300, 350)
-end, "Entities MultiSection")
-
-QueueInitStep(function()
-    elements.soldiersToggle = Toggle:new("Soldier ESP", function(state)
-        ESPConfig.SoldiersEnabled = state
-    end, ESPConfig.SoldiersEnabled, "soldiers_enabled")
-    elements.soldiersToggle:AddColorPicker("Soldier Color", function(color)
-        ESPConfig.Colors.Soldier = color
-    end, ESPConfig.Colors.Soldier, "soldiers_color")
-    multiSections.Entities:AddElement(elements.soldiersToggle, 1)
-
-    elements.soldiersDistance = Slider:new("Soldiers Distance", 100, 3000, ESPConfig.SoldiersDistance, function(value)
-        ESPConfig.SoldiersDistance = value
-    end, "soldiers_distance")
-    multiSections.Entities:AddElement(elements.soldiersDistance, 1)
-end, "Soldiers ESP 1")
-
-QueueInitStep(function()
-    elements.soldiersShowDistance = Toggle:new("Show Distance", function(state)
-        ESPConfig.SoldiersShowDistance = state
-    end, ESPConfig.SoldiersShowDistance, "soldiers_show_distance")
-    multiSections.Entities:AddElement(elements.soldiersShowDistance, 1)
-
-    elements.soldiersTracers = Toggle:new("Soldiers Tracers", function(state)
-        ESPConfig.SoldiersTracers = state
-    end, ESPConfig.SoldiersTracers, "soldiers_tracers")
-    multiSections.Entities:AddElement(elements.soldiersTracers, 1)
-end, "Soldiers ESP 2")
-
-QueueInitStep(function()
-    elements.animalsMainToggle = Toggle:new("Enable Animals ESP", function(state)
-        ESPConfig.AnimalsEnabled = state
-    end, ESPConfig.AnimalsEnabled, "animals_main_enabled")
-    multiSections.Entities:AddElement(elements.animalsMainToggle, 2)
-
-    elements.animalsMultiSelect = MultiSelectDropdown:new("Animal Types", 
-        {"Deer", "Wildboar", "Wolf"}, 
-        function(selected)
-            ESPConfig.SelectedAnimals = selected
-        end, 
-        ESPConfig.SelectedAnimals, 
-        "selected_animals")
-    multiSections.Entities:AddElement(elements.animalsMultiSelect, 2)
-end, "Animals ESP 1")
-
-QueueInitStep(function()
-    local animalTypes = {"Deer", "Wildboar", "Wolf"}
-    for _, animal in ipairs(animalTypes) do
-        elements[animal:lower() .. "ColorPicker"] = ColorPicker:new(animal .. " Color", function(color)
-            ESPConfig.Colors[animal] = color
-        end, ESPConfig.Colors[animal])
-        multiSections.Entities:AddElement(elements[animal:lower() .. "ColorPicker"], 2)
-    end
-end, "Animals ESP Colors")
-
-QueueInitStep(function()
-    elements.animalsDistance = Slider:new("Animals Distance", 100, 4000, ESPConfig.AnimalsDistance, function(value)
-        ESPConfig.AnimalsDistance = value
-    end, "animals_distance")
-    multiSections.Entities:AddElement(elements.animalsDistance, 2)
-
-    elements.animalsShowDistance = Toggle:new("Show Distance", function(state)
-        ESPConfig.AnimalsShowDistance = state
-    end, ESPConfig.AnimalsShowDistance, "animals_show_distance")
-    multiSections.Entities:AddElement(elements.animalsShowDistance, 2)
-
-    elements.animalsTracers = Toggle:new("Animals Tracers", function(state)
-        ESPConfig.AnimalsTracers = state
-    end, ESPConfig.AnimalsTracers, "animals_tracers")
-    multiSections.Entities:AddElement(elements.animalsTracers, 2)
-end, "Animals ESP 2")
-
-QueueInitStep(function()
-    elements.sleeperToggle = Toggle:new("Sleeper ESP", function(state)
-        ESPConfig.SleeperEnabled = state
-    end, ESPConfig.SleeperEnabled, "sleeper_enabled")
-    elements.sleeperToggle:AddColorPicker("Sleeper Color", function(color)
-        ESPConfig.Colors.Sleeper = color
-    end, ESPConfig.Colors.Sleeper, "sleeper_color")
-    multiSections.Entities:AddElement(elements.sleeperToggle, 3)
-
-    elements.sleeperDistance = Slider:new("Sleeper Distance", 100, 3000, ESPConfig.SleeperDistance, function(value)
-        ESPConfig.SleeperDistance = value
-    end, "sleeper_distance")
-    multiSections.Entities:AddElement(elements.sleeperDistance, 3)
-end, "Sleeper ESP")
-
-QueueInitStep(function()
-    elements.bodyBagToggle = Toggle:new("Body Bag ESP", function(state)
-        ESPConfig.BodyBagEnabled = state
-    end, ESPConfig.BodyBagEnabled, "body_bag_enabled")
-    elements.bodyBagToggle:AddColorPicker("Body Bag Color", function(color)
-        ESPConfig.Colors.BodyBag = color
-    end, ESPConfig.Colors.BodyBag, "body_bag_color")
-    multiSections.Entities:AddElement(elements.bodyBagToggle, 3)
-
-    elements.bodyBagDistance = Slider:new("Body Bag Distance", 100, 3000, ESPConfig.BodyBagDistance, function(value)
-        ESPConfig.BodyBagDistance = value
-    end, "body_bag_distance")
-    multiSections.Entities:AddElement(elements.bodyBagDistance, 3)
-end, "Body Bag ESP")
-
-QueueInitStep(function()
-    elements.modAdminViewer = Toggle:new("Mod/Admin Viewer", function(state)
-        ESPConfig.ModAdminViewerEnabled = state
-    end, ESPConfig.ModAdminViewerEnabled, "mod_admin_viewer_enabled")
-    multiSections.Entities:AddElement(elements.modAdminViewer, 4)
-end, "Mod Admin Viewer")
-
-QueueInitStep(function()
-    sections.MainPlayerList = tabs.Player:AddPlayerList("Player List", 10, 60, 610, 450)
-end, "Player List")
-
-QueueInitStep(function()
-    sections.General = tabs.Settings:AddSection("General Settings", 10, 60, 300, 200)
-
-    elements.toggleKeybindsList = Toggle:new("Keybinds List", function(state)
-        Library.KeybindsList.visible = state
-    end, Library.KeybindsList.visible, "keybinds_list_enabled")
-    sections.General:AddElement(elements.toggleKeybindsList)
-end, "General Settings 1")
-
-QueueInitStep(function()
-    elements.menu_toggle = Toggle:new("Menu Toggle", function(state)
-    end, false, "menu_visible")
-    elements.menu_keybind = elements.menu_toggle:AddKeybind(0x12, "Toggle") 
-    sections.General:AddElement(elements.menu_toggle)
-
-    elements.targethud_toggle = Toggle:new("Target HUD", function(state)
-        Library.TargetHUD.visible = state
-    end, Library.TargetHUD.visible, "target_hud")
-    sections.General:AddElement(elements.targethud_toggle)
-end, "General Settings 2")
-
-QueueInitStep(function()
-    elements.enableAnimations = Toggle:new("Enable Animations", function(state)
-        Library.Settings.Tween = state
-    end, Library.Settings.Tween, "animations_enabled")
-    sections.General:AddElement(elements.enableAnimations)
-
-    elements.animationSpeed = Slider:new("Animation Speed", 0.05, 0.3, Library.Settings.Animation.Speed, function(value)
-        Library.Settings.Animation.Speed = value
-    end, "animation_speed")
-    sections.General:AddElement(elements.animationSpeed)
-end, "General Settings 3")
-
-QueueInitStep(function()
-    sections.Theme = tabs.Settings:AddSection("Theme Settings", 320, 60, 300, 415)
-
-    local themeNames = {}
-    for name, _ in pairs(Library.Theme.List) do
-        table.insert(themeNames, name)
-    end
-
-    elements.themeSelector = Dropdown:new("Select Theme", themeNames, function(selected)
-    end, Library.Theme.Selected, "selected_theme")
-    sections.Theme:AddElement(elements.themeSelector)
-end, "Theme Settings 1")
-
-QueueInitStep(function()
-    elements.applyThemeButton = Button:new("Apply Theme", function()
-        if elements.themeSelector.value then
-            Library.Theme.Selected = elements.themeSelector.value
-            Library.RefreshTheme()
+    weaponIndex = weaponIndex + 1
+end
+
+-- ESP Section - Converted from MultiSection to regular Section with inline colorpickers
+sections.ESPPreview = tabs.Visuals:AddESPPreview("ESP Preview", 10, 60, 250, 350)
+sections.ESPSettings = tabs.Visuals:AddSection("ESP Settings", 270, 60, 350, 530)
+
+elements.enableESP = Toggle:new("Enable ESP", function(state)
+    Library.ESP.Enabled = state
+end, Library.ESP.Enabled, "esp_enabled")
+sections.ESPSettings:AddElement(elements.enableESP)
+
+elements.boxToggle = Toggle:new("Box ESP", function(state)
+    Library.ESP.Show2DBox = state
+    Library.ESPPreview.Components.Box = state
+end, Library.ESP.Show2DBox, "esp_box")
+elements.boxToggle:AddColorPicker("Box Color", function(color)
+    Library.ESP.Colors.Box = color
+    Library.ESPPreview.Colors.Box = color
+end, Library.ESP.Colors.Box)
+sections.ESPSettings:AddElement(elements.boxToggle)
+
+elements.healthBarToggle = Toggle:new("Health Bar", function(state)
+    Library.ESP.ShowHealth = state
+    Library.ESPPreview.Components.HealthBar = state
+end, Library.ESP.ShowHealth, "esp_healthbar")
+sections.ESPSettings:AddElement(elements.healthBarToggle)
+
+elements.nameToggle = Toggle:new("Name ESP", function(state)
+    Library.ESP.ShowName = state
+    Library.ESPPreview.Components.Name = state
+end, Library.ESP.ShowName, "esp_name")
+elements.nameToggle:AddColorPicker("Name Color", function(color)
+    Library.ESP.Colors.Name = color
+    Library.ESPPreview.Colors.Name = color
+end, Library.ESP.Colors.Name)
+sections.ESPSettings:AddElement(elements.nameToggle)
+
+elements.showTagsToggle = Toggle:new("Show Tags", function(state)
+    Library.ESP.ShowTags = state
+end, Library.ESP.ShowTags, "esp_show_tags")
+sections.ESPSettings:AddElement(elements.showTagsToggle)
+
+elements.distanceToggle = Toggle:new("Distance ESP", function(state)
+    Library.ESP.ShowDistance = state
+    Library.ESPPreview.Components.Distance = state
+end, Library.ESP.ShowDistance, "esp_distance")
+elements.distanceToggle:AddColorPicker("Distance Color", function(color)
+    Library.ESP.Colors.Distance = color
+    Library.ESPPreview.Colors.Distance = color
+end, Library.ESP.Colors.Distance)
+sections.ESPSettings:AddElement(elements.distanceToggle)
+
+elements.weaponToggle = Toggle:new("Weapon ESP", function(state)
+    Library.ESP.ShowWeapon = state
+    Library.ESPPreview.Components.Weapon = state
+end, Library.ESP.ShowWeapon, "esp_weapon")
+elements.weaponToggle:AddColorPicker("Weapon Color", function(color)
+    Library.ESP.Colors.Weapon = color
+    Library.ESPPreview.Colors.Weapon = color
+end, Library.ESP.Colors.Weapon)
+sections.ESPSettings:AddElement(elements.weaponToggle)
+
+elements.skeletonToggle = Toggle:new("Skeleton ESP", function(state)
+    Library.ESP.ShowSkeleton = state
+    Library.ESPPreview.Components.Skeleton = state
+end, Library.ESP.ShowSkeleton, "esp_skeleton")
+elements.skeletonToggle:AddColorPicker("Skeleton Color", function(color)
+    Library.ESP.Colors.Skeleton = color
+    Library.ESPPreview.Colors.Skeleton = color
+end, Library.ESP.Colors.Skeleton)
+sections.ESPSettings:AddElement(elements.skeletonToggle)
+
+elements.flagsToggle = Toggle:new("Flags ESP", function(state)
+    Library.ESP.ShowFlags = state
+    Library.ESPPreview.Components.Flags = state
+end, Library.ESP.ShowFlags, "esp_flags")
+elements.flagsToggle:AddColorPicker("Flags Color", function(color)
+    Library.ESP.Colors.Flags = color
+    Library.ESPPreview.Colors.Flags = color
+end, Library.ESP.Colors.Flags)
+sections.ESPSettings:AddElement(elements.flagsToggle)
+
+elements.onlyEnemiesToggle = Toggle:new("Only Enemies", function(state)
+    Library.ESP.OnlyEnemies = state
+end, Library.ESP.OnlyEnemies, "esp_only_enemies")
+sections.ESPSettings:AddElement(elements.onlyEnemiesToggle)
+
+elements.enemyColorPicker = ColorPicker:new("Enemy Color", function(color)
+    Library.ESP.Colors.Enemy = color
+end, Library.ESP.Colors.Enemy)
+sections.ESPSettings:AddElement(elements.enemyColorPicker)
+
+elements.friendlyColorPicker = ColorPicker:new("Friendly Color", function(color)
+    Library.ESP.Colors.Friendly = color
+end, Library.ESP.Colors.Friendly)
+sections.ESPSettings:AddElement(elements.friendlyColorPicker)
+
+elements.maxDistanceSlider = Slider:new("Max Distance", 100, 20000, Library.ESP.MaxDistance, function(value)
+    Library.ESP.MaxDistance = value
+end, "esp_max_distance")
+sections.ESPSettings:AddElement(elements.maxDistanceSlider)
+
+sections.ESPMain = tabs.Entities:AddSection("ESP Main Controls", 10, 60, 300, 150)
+
+local function isItemSelected(itemName, selectedArray)
+    for _, selected in ipairs(selectedArray) do
+        if string.find(itemName:lower(), selected:lower()) then
+            return true
         end
-    end)
-    sections.Theme:AddElement(elements.applyThemeButton)
-end, "Theme Settings 2")
-
-QueueInitStep(function()
-    local themeKeys = {"Accent", "Warning", "Error", "Header", "Text"}
-    
-    elements.colorPickers = {}
-    for i, key in ipairs(themeKeys) do
-        elements[key.."Picker"] = ColorPicker:new(key, function(color)
-            if Library.Theme.List[Library.Theme.Selected] then
-                Library.Theme.List[Library.Theme.Selected][key] = color
-                for _, window in ipairs(Library.Windows) do
-                    window.theme = Library.Theme.List[Library.Theme.Selected]
-                end
-            end
-        end, Library.Theme.List[Library.Theme.Selected][key])
-        sections.Theme:AddElement(elements[key.."Picker"])
     end
-end, "Theme Colors 1")
+    return false
+end
 
-QueueInitStep(function()
-    local themeKeys = {"Secondary", "Outer", "Light", "Dark", "High"}
-    
-    for i, key in ipairs(themeKeys) do
-        elements[key.."Picker"] = ColorPicker:new(key, function(color)
-            if Library.Theme.List[Library.Theme.Selected] then
-                Library.Theme.List[Library.Theme.Selected][key] = color
-                for _, window in ipairs(Library.Windows) do
-                    window.theme = Library.Theme.List[Library.Theme.Selected]
-                end
-            end
-        end, Library.Theme.List[Library.Theme.Selected][key])
-        sections.Theme:AddElement(elements[key.."Picker"])
+elements.enableMainESP = Toggle:new("Enable ESP", function(state)
+    ESPConfig.MainEnabled = state
+end, ESPConfig.MainEnabled, "main_esp_enabled")
+sections.ESPMain:AddElement(elements.enableMainESP)
+
+elements.antiClutter = Toggle:new("Anti-Clutter", function(state)
+    ESPConfig.AntiClutter = state
+end, ESPConfig.AntiClutter, "anti_clutter_enabled")
+sections.ESPMain:AddElement(elements.antiClutter)
+
+local ResourceCategories = {"Ores", "Plants", "World Items", "Loot"}
+multiSections.Resources = tabs.Entities:AddMultiSection("Resources ESP", ResourceCategories, 10, 220, 300, 350)
+
+elements.oresMainToggle = Toggle:new("Enable Ores ESP", function(state)
+    ESPConfig.OresEnabled = state
+end, ESPConfig.OresEnabled, "ores_main_enabled")
+multiSections.Resources:AddElement(elements.oresMainToggle, 1)
+
+elements.oresMultiSelect = MultiSelectDropdown:new("Ore Types", 
+    {"Stone", "Metal", "Phosphate"}, 
+    function(selected)
+        ESPConfig.SelectedOres = selected
+    end, 
+    ESPConfig.SelectedOres, 
+    "selected_ores")
+multiSections.Resources:AddElement(elements.oresMultiSelect, 1)
+
+elements.stoneColorPicker = ColorPicker:new("Stone Color", function(color)
+    ESPConfig.Colors.Stone = color
+end, ESPConfig.Colors.Stone)
+multiSections.Resources:AddElement(elements.stoneColorPicker, 1)
+
+elements.metalColorPicker = ColorPicker:new("Metal Color", function(color)
+    ESPConfig.Colors.Metal = color
+end, ESPConfig.Colors.Metal)
+multiSections.Resources:AddElement(elements.metalColorPicker, 1)
+
+elements.phosphateColorPicker = ColorPicker:new("Phosphate Color", function(color)
+    ESPConfig.Colors.Phosphate = color
+end, ESPConfig.Colors.Phosphate)
+multiSections.Resources:AddElement(elements.phosphateColorPicker, 1)
+
+elements.oresDistance = Slider:new("Ores Distance", 100, 3000, ESPConfig.OresDistance, function(value)
+    ESPConfig.OresDistance = value
+end, "ores_distance")
+multiSections.Resources:AddElement(elements.oresDistance, 1)
+
+elements.oresShowDistance = Toggle:new("Show Distance", function(state)
+    ESPConfig.OresShowDistance = state
+end, ESPConfig.OresShowDistance, "ores_show_distance")
+multiSections.Resources:AddElement(elements.oresShowDistance, 1)
+
+elements.oresTracers = Toggle:new("Ores Tracers", function(state)
+    ESPConfig.OresTracers = state
+end, ESPConfig.OresTracers, "ores_tracers")
+multiSections.Resources:AddElement(elements.oresTracers, 1)
+
+elements.plantsMainToggle = Toggle:new("Enable Plants ESP", function(state)
+    ESPConfig.PlantsEnabled = state
+end, ESPConfig.PlantsEnabled, "plants_main_enabled")
+multiSections.Resources:AddElement(elements.plantsMainToggle, 2)
+
+elements.plantsMultiSelect = MultiSelectDropdown:new("Plant Types", 
+    {"Wool", "Raspberry", "Corn", "Tomato", "Blueberry", "Lemon"}, 
+    function(selected)
+        ESPConfig.SelectedPlants = selected
+    end, 
+    ESPConfig.SelectedPlants, 
+    "selected_plants")
+multiSections.Resources:AddElement(elements.plantsMultiSelect, 2)
+
+local plantTypes = {"Wool", "Raspberry", "Corn", "Tomato", "Blueberry", "Lemon"}
+for _, plant in ipairs(plantTypes) do
+    elements[plant:lower() .. "ColorPicker"] = ColorPicker:new(plant .. " Color", function(color)
+        ESPConfig.Colors[plant] = color
+    end, ESPConfig.Colors[plant])
+    multiSections.Resources:AddElement(elements[plant:lower() .. "ColorPicker"], 2)
+end
+
+elements.plantsDistance = Slider:new("Plants Distance", 100, 4000, ESPConfig.PlantsDistance, function(value)
+    ESPConfig.PlantsDistance = value
+end, "plants_distance")
+multiSections.Resources:AddElement(elements.plantsDistance, 2)
+
+elements.plantsShowDistance = Toggle:new("Show Distance", function(state)
+    ESPConfig.PlantsShowDistance = state
+end, ESPConfig.PlantsShowDistance, "plants_show_distance")
+multiSections.Resources:AddElement(elements.plantsShowDistance, 2)
+
+elements.plantsTracers = Toggle:new("Plants Tracers", function(state)
+    ESPConfig.PlantsTracers = state
+end, ESPConfig.PlantsTracers, "plants_tracers")
+multiSections.Resources:AddElement(elements.plantsTracers, 2)
+
+elements.dropsToggle = Toggle:new("Drops ESP", function(state)
+    ESPConfig.DropsEnabled = state
+end, ESPConfig.DropsEnabled, "drops_enabled")
+elements.dropsToggle:AddColorPicker("Drops Color", function(color)
+    ESPConfig.Colors.Drops = color
+end, ESPConfig.Colors.Drops, "drops_color")
+multiSections.Resources:AddElement(elements.dropsToggle, 3)
+
+elements.dropsDistance = Slider:new("Drops Distance", 100, 4000, ESPConfig.DropsDistance, function(value)
+    ESPConfig.DropsDistance = value
+end, "drops_distance")
+multiSections.Resources:AddElement(elements.dropsDistance, 3)
+
+elements.digPileToggle = Toggle:new("DigPile ESP", function(state)
+    ESPConfig.DigPileEnabled = state
+end, ESPConfig.DigPileEnabled, "digpile_enabled")
+elements.digPileToggle:AddColorPicker("DigPile Color", function(color)
+    ESPConfig.Colors.DigPile = color
+end, ESPConfig.Colors.DigPile, "digpile_color")
+multiSections.Resources:AddElement(elements.digPileToggle, 3)
+
+elements.digPileDistance = Slider:new("DigPile Distance", 100, 4000, ESPConfig.DigPileDistance, function(value)
+    ESPConfig.DigPileDistance = value
+end, "digpile_distance")
+multiSections.Resources:AddElement(elements.digPileDistance, 3)
+
+elements.keycardToggle = Toggle:new("Keycard ESP", function(state)
+    ESPConfig.KeycardEnabled = state
+end, ESPConfig.KeycardEnabled, "keycard_enabled")
+elements.keycardToggle:AddColorPicker("Keycard Color", function(color)
+    ESPConfig.Colors.Keycard = color
+end, ESPConfig.Colors.Keycard, "keycard_color")
+multiSections.Resources:AddElement(elements.keycardToggle, 4)
+
+elements.monumentSpawnsToggle = Toggle:new("Monument Spawns ESP", function(state)
+    ESPConfig.MonumentSpawnsEnabled = state
+end, ESPConfig.MonumentSpawnsEnabled, "monument_spawns_enabled")
+multiSections.Resources:AddElement(elements.monumentSpawnsToggle, 4)
+
+elements.lootMultiSelect = MultiSelectDropdown:new("Loot Types", 
+    {"TrashCan", "OilBarrel", "LockedWoodenCrate", "LockedMetalCrate", "FoodCrate"}, 
+    function(selected)
+        ESPConfig.SelectedLoot = selected
+    end, 
+    ESPConfig.SelectedLoot, 
+    "selected_loot")
+multiSections.Resources:AddElement(elements.lootMultiSelect, 4)
+
+local lootTypes = {"TrashCan", "OilBarrel", "LockedWoodenCrate", "LockedMetalCrate", "FoodCrate"}
+for _, loot in ipairs(lootTypes) do
+    local displayName = loot:gsub("([A-Z])", " %1"):gsub("^%s+", "")
+    elements[loot:lower() .. "ColorPicker"] = ColorPicker:new(displayName .. " Color", function(color)
+        ESPConfig.Colors[loot] = color
+    end, ESPConfig.Colors[loot])
+    multiSections.Resources:AddElement(elements[loot:lower() .. "ColorPicker"], 4)
+end
+
+local EntityCategories = {"Soldiers", "Animals", "Players", "Misc"}
+multiSections.Entities = tabs.Entities:AddMultiSection("Entities ESP", EntityCategories, 320, 220, 300, 350)
+
+elements.soldiersToggle = Toggle:new("Soldier ESP", function(state)
+    ESPConfig.SoldiersEnabled = state
+end, ESPConfig.SoldiersEnabled, "soldiers_enabled")
+elements.soldiersToggle:AddColorPicker("Soldier Color", function(color)
+    ESPConfig.Colors.Soldier = color
+end, ESPConfig.Colors.Soldier, "soldiers_color")
+multiSections.Entities:AddElement(elements.soldiersToggle, 1)
+
+elements.soldiersDistance = Slider:new("Soldiers Distance", 100, 3000, ESPConfig.SoldiersDistance, function(value)
+    ESPConfig.SoldiersDistance = value
+end, "soldiers_distance")
+multiSections.Entities:AddElement(elements.soldiersDistance, 1)
+
+elements.soldiersShowDistance = Toggle:new("Show Distance", function(state)
+    ESPConfig.SoldiersShowDistance = state
+end, ESPConfig.SoldiersShowDistance, "soldiers_show_distance")
+multiSections.Entities:AddElement(elements.soldiersShowDistance, 1)
+
+elements.soldiersTracers = Toggle:new("Soldiers Tracers", function(state)
+    ESPConfig.SoldiersTracers = state
+end, ESPConfig.SoldiersTracers, "soldiers_tracers")
+multiSections.Entities:AddElement(elements.soldiersTracers, 1)
+
+elements.animalsMainToggle = Toggle:new("Enable Animals ESP", function(state)
+    ESPConfig.AnimalsEnabled = state
+end, ESPConfig.AnimalsEnabled, "animals_main_enabled")
+multiSections.Entities:AddElement(elements.animalsMainToggle, 2)
+
+elements.animalsMultiSelect = MultiSelectDropdown:new("Animal Types", 
+    {"Deer", "Wildboar", "Wolf"}, 
+    function(selected)
+        ESPConfig.SelectedAnimals = selected
+    end, 
+    ESPConfig.SelectedAnimals, 
+    "selected_animals")
+multiSections.Entities:AddElement(elements.animalsMultiSelect, 2)
+
+local animalTypes = {"Deer", "Wildboar", "Wolf"}
+for _, animal in ipairs(animalTypes) do
+    elements[animal:lower() .. "ColorPicker"] = ColorPicker:new(animal .. " Color", function(color)
+        ESPConfig.Colors[animal] = color
+    end, ESPConfig.Colors[animal])
+    multiSections.Entities:AddElement(elements[animal:lower() .. "ColorPicker"], 2)
+end
+
+elements.animalsDistance = Slider:new("Animals Distance", 100, 4000, ESPConfig.AnimalsDistance, function(value)
+    ESPConfig.AnimalsDistance = value
+end, "animals_distance")
+multiSections.Entities:AddElement(elements.animalsDistance, 2)
+
+elements.animalsShowDistance = Toggle:new("Show Distance", function(state)
+    ESPConfig.AnimalsShowDistance = state
+end, ESPConfig.AnimalsShowDistance, "animals_show_distance")
+multiSections.Entities:AddElement(elements.animalsShowDistance, 2)
+
+elements.animalsTracers = Toggle:new("Animals Tracers", function(state)
+    ESPConfig.AnimalsTracers = state
+end, ESPConfig.AnimalsTracers, "animals_tracers")
+multiSections.Entities:AddElement(elements.animalsTracers, 2)
+
+elements.sleeperToggle = Toggle:new("Sleeper ESP", function(state)
+    ESPConfig.SleeperEnabled = state
+end, ESPConfig.SleeperEnabled, "sleeper_enabled")
+elements.sleeperToggle:AddColorPicker("Sleeper Color", function(color)
+    ESPConfig.Colors.Sleeper = color
+end, ESPConfig.Colors.Sleeper, "sleeper_color")
+multiSections.Entities:AddElement(elements.sleeperToggle, 3)
+
+elements.sleeperDistance = Slider:new("Sleeper Distance", 100, 3000, ESPConfig.SleeperDistance, function(value)
+    ESPConfig.SleeperDistance = value
+end, "sleeper_distance")
+multiSections.Entities:AddElement(elements.sleeperDistance, 3)
+
+elements.bodyBagToggle = Toggle:new("Body Bag ESP", function(state)
+    ESPConfig.BodyBagEnabled = state
+end, ESPConfig.BodyBagEnabled, "body_bag_enabled")
+elements.bodyBagToggle:AddColorPicker("Body Bag Color", function(color)
+    ESPConfig.Colors.BodyBag = color
+end, ESPConfig.Colors.BodyBag, "body_bag_color")
+multiSections.Entities:AddElement(elements.bodyBagToggle, 3)
+
+elements.bodyBagDistance = Slider:new("Body Bag Distance", 100, 3000, ESPConfig.BodyBagDistance, function(value)
+    ESPConfig.BodyBagDistance = value
+end, "body_bag_distance")
+multiSections.Entities:AddElement(elements.bodyBagDistance, 3)
+
+elements.modAdminViewer = Toggle:new("Mod/Admin Viewer", function(state)
+    ESPConfig.ModAdminViewerEnabled = state
+end, ESPConfig.ModAdminViewerEnabled, "mod_admin_viewer_enabled")
+multiSections.Entities:AddElement(elements.modAdminViewer, 4)
+
+sections.MainPlayerList = tabs.Player:AddPlayerList("Player List", 10, 60, 610, 450)
+
+sections.General = tabs.Settings:AddSection("General Settings", 10, 60, 300, 200)
+
+elements.toggleKeybindsList = Toggle:new("Keybinds List", function(state)
+    Library.KeybindsList.visible = state
+end, Library.KeybindsList.visible, "keybinds_list_enabled")
+sections.General:AddElement(elements.toggleKeybindsList)
+
+elements.menu_toggle = Toggle:new("Menu Toggle", function(state)
+end, false, "menu_visible")
+elements.menu_keybind = elements.menu_toggle:AddKeybind(0x12, "Toggle") 
+sections.General:AddElement(elements.menu_toggle)
+
+elements.targethud_toggle = Toggle:new("Target HUD", function(state)
+    Library.TargetHUD.visible = state
+end, Library.TargetHUD.visible, "target_hud")
+sections.General:AddElement(elements.targethud_toggle)
+
+elements.enableAnimations = Toggle:new("Enable Animations", function(state)
+    Library.Settings.Tween = state
+end, Library.Settings.Tween, "animations_enabled")
+sections.General:AddElement(elements.enableAnimations)
+
+elements.animationSpeed = Slider:new("Animation Speed", 0.05, 0.3, Library.Settings.Animation.Speed, function(value)
+    Library.Settings.Animation.Speed = value
+end, "animation_speed")
+sections.General:AddElement(elements.animationSpeed)
+
+sections.Theme = tabs.Settings:AddSection("Theme Settings", 320, 60, 300, 415)
+
+local themeNames = {}
+for name, _ in pairs(Library.Theme.List) do
+    table.insert(themeNames, name)
+end
+
+elements.themeSelector = Dropdown:new("Select Theme", themeNames, function(selected)
+end, Library.Theme.Selected, "selected_theme")
+sections.Theme:AddElement(elements.themeSelector)
+
+elements.applyThemeButton = Button:new("Apply Theme", function()
+    if elements.themeSelector.value then
+        Library.Theme.Selected = elements.themeSelector.value
+        Library.RefreshTheme()
     end
-end, "Theme Colors 2")
+end)
+sections.Theme:AddElement(elements.applyThemeButton)
 
-QueueInitStep(function()
-    local themeKeys = {"Mid", "Low", "Stroke", "AccentLight", "MidLight"}
+local themeKeys = {
+    "Accent", "Warning", "Error", "Header", "Text", "Secondary",
+    "Outer", "Light", "Dark", "High", "Mid", "Low", "Stroke",
+    "AccentLight", "MidLight"
+}
+
+elements.colorPickers = {}
+for i, key in ipairs(themeKeys) do
+    local row = math.floor((i-1)/2)
+    local col = (i-1) % 2
     
-    for i, key in ipairs(themeKeys) do
-        elements[key.."Picker"] = ColorPicker:new(key, function(color)
-            if Library.Theme.List[Library.Theme.Selected] then
-                Library.Theme.List[Library.Theme.Selected][key] = color
-                for _, window in ipairs(Library.Windows) do
-                    window.theme = Library.Theme.List[Library.Theme.Selected]
-                end
-            end
-        end, Library.Theme.List[Library.Theme.Selected][key])
-        sections.Theme:AddElement(elements[key.."Picker"])
-    end
-end, "Theme Colors 3")
-
-QueueInitStep(function()
-    elements.resetThemeButton = Button:new("Reset to Default", function()
-        local currentTheme = Library.Theme.Selected
-        local defaultTheme = Library.Theme.List[currentTheme]
-        
-        local originalTheme = {}
-        for name, theme in pairs(Library.Theme.List) do
-            if name == currentTheme then
-                originalTheme = table.clone(theme)
-                break
+    elements["label_"..key] = {
+        Render = function()
+            local x, y = sections.Theme:GetAbsolutePos()
+            local theme = Library.Theme.List[Library.Theme.Selected]
+            local labelX = 320 + 10 + (col * 150)
+            local labelY = 60 + 40 + (row * 25)
+            
+            render.text(labelX, labelY, theme.Text[1], theme.Text[2], theme.Text[3], theme.Text[4], 
+                        1, false, key)
+        end
+    }
+    
+    elements[key.."Picker"] = ColorPicker:new(key, function(color)
+        if Library.Theme.List[Library.Theme.Selected] then
+            Library.Theme.List[Library.Theme.Selected][key] = color
+            for _, window in ipairs(Library.Windows) do
+                window.theme = Library.Theme.List[Library.Theme.Selected]
             end
         end
-        
-        for key, value in pairs(originalTheme) do
-            Library.Theme.List[currentTheme][key] = value
-            if elements[key.."Picker"] then
-                elements[key.."Picker"].color = value
-            end
-        end
-        
-        for _, window in ipairs(Library.Windows) do
-            window.theme = Library.Theme.List[currentTheme]
-        end
-    end)
-    sections.Theme:AddElement(elements.resetThemeButton)
-end, "Theme Reset")
+    end, Library.Theme.List[Library.Theme.Selected][key])
+    elements[key.."Picker"].x = 320 + 80 + (col * 150)
+    elements[key.."Picker"].y = 60 + 35 + (row * 25)
+    elements[key.."Picker"].width = 20
+    elements[key.."Picker"].height = 15
+    
+    sections.Theme:AddElement(elements[key.."Picker"])
+end
 
-QueueInitStep(function()
-    sections.ConfigManagement = tabs.Settings:AddSection("Config Management", 10, 270, 300, 325)
-    local availableConfigs = Library.ConfigSystem:GetConfigs()
-    if #availableConfigs == 0 then
-        availableConfigs = {"No configs found"}
+elements.resetThemeButton = Button:new("Reset to Default", function()
+    local currentTheme = Library.Theme.Selected
+    local defaultTheme = Library.Theme.List[currentTheme]
+    
+    local originalTheme = {}
+    for name, theme in pairs(Library.Theme.List) do
+        if name == currentTheme then
+            originalTheme = table.clone(theme)
+            break
+        end
     end
-
-    elements.configNameInput = Input:new("Config Name", function(value)
-    end, Library.ConfigSystem.Configs[1], "config_name")
-    sections.ConfigManagement:AddElement(elements.configNameInput)
-end, "Config Management 1")
-
-QueueInitStep(function()
-    elements.configList = List:new("Available Configs", availableConfigs, function(selected)
-        if selected and selected ~= "No configs found" then
-            elements.configNameInput:Set(selected)
-            Library.ConfigSystem.CurrentConfig = selected
+    
+    for key, value in pairs(originalTheme) do
+        Library.Theme.List[currentTheme][key] = value
+        if elements[key.."Picker"] then
+            elements[key.."Picker"].color = value
         end
-    end, nil, 6, "config_list")
-    sections.ConfigManagement:AddElement(elements.configList)
-end, "Config Management 2")
+    end
+    
+    for _, window in ipairs(Library.Windows) do
+        window.theme = Library.Theme.List[currentTheme]
+    end
+end)
+sections.Theme:AddElement(elements.resetThemeButton)
 
-QueueInitStep(function()
-    elements.saveConfigButton = Button:new("Save Config", function()
-        local configName = elements.configNameInput.value
-        if configName and configName ~= "" and configName ~= "No configs found" then
-            if Library.ConfigSystem:SaveConfig(configName) then
-                Library.Notify("Config Saved", "Successfully saved settings to "..configName..".json")
-                elements.configList.options = Library.ConfigSystem:GetConfigs()
-            else
-                Library.Notify("Config Error", "Failed to save config: "..configName, "error", 5000)
-            end
+function table.clone(org)
+    local copy = {}
+    for k, v in pairs(org) do
+        if type(v) == "table" then
+            copy[k] = table.clone(v)
         else
-            Library.Notify("Config Error", "Configs cannot be saved without a name", "error", 5000)
+            copy[k] = v
         end
-    end)
-    sections.ConfigManagement:AddElement(elements.saveConfigButton)
-end, "Config Management 3")
+    end
+    return copy
+end
 
-QueueInitStep(function()
-    elements.loadConfigButton = Button:new("Load Config", function()
-        local configName = elements.configNameInput.value
-        if configName and configName ~= "" and configName ~= "No configs found" then
-            if Library.ConfigSystem:LoadConfig(configName) then
-                Library.Notify("Config Loaded", "Successfully loaded config "..configName..".json")
-            else
-                Library.Notify("Config Error", "Failed to load config: "..configName, "error", 5000)
-            end
+sections.ConfigManagement = tabs.Settings:AddSection("Config Management", 10, 270, 300, 325)
+local availableConfigs = Library.ConfigSystem:GetConfigs()
+if #availableConfigs == 0 then
+    availableConfigs = {"No configs found"}
+end
+
+elements.configNameInput = Input:new("Config Name", function(value)
+end, Library.ConfigSystem.Configs[1], "config_name")
+sections.ConfigManagement:AddElement(elements.configNameInput)
+
+elements.configList = List:new("Available Configs", availableConfigs, function(selected)
+    if selected and selected ~= "No configs found" then
+        elements.configNameInput:Set(selected)
+        Library.ConfigSystem.CurrentConfig = selected
+    end
+end, nil, 6, "config_list")
+sections.ConfigManagement:AddElement(elements.configList)
+
+elements.saveConfigButton = Button:new("Save Config", function()
+    local configName = elements.configNameInput.value
+    if configName and configName ~= "" and configName ~= "No configs found" then
+        if Library.ConfigSystem:SaveConfig(configName) then
+            Library.Notify("Config Saved", "Successfully saved settings to "..configName..".json")
+            elements.configList.options = Library.ConfigSystem:GetConfigs()
         else
-            Library.Notify("Config Error", "Please select a valid config", "error", 5000)
+            Library.Notify("Config Error", "Failed to save config: "..configName, "error", 5000)
         end
-    end)
-    sections.ConfigManagement:AddElement(elements.loadConfigButton)
-end, "Config Management 4")
+    else
+        Library.Notify("Config Error", "Configs cannot be saved without a name", "error", 5000)
+    end
+end)
+sections.ConfigManagement:AddElement(elements.saveConfigButton)
 
-QueueInitStep(function()
-    local deleteConfigButton = Button:new("Delete Config", function()
-        local configName = elements.configNameInput.value
-        if configName and configName ~= "" and configName ~= "No configs found" then
-            if Library.ConfigSystem:DeleteConfig(configName) then
-                elements.configList.options = Library.ConfigSystem:GetConfigs()
-                elements.configNameInput:Set("")
-                Library.Notify("Config Deleted", "Successfully deleted config "..configName..".json")
-            else
-                Library.Notify("Config Error", "Failed to delete config: "..configName, "error", 5000)
-            end
+elements.loadConfigButton = Button:new("Load Config", function()
+    local configName = elements.configNameInput.value
+    if configName and configName ~= "" and configName ~= "No configs found" then
+        if Library.ConfigSystem:LoadConfig(configName) then
+            Library.Notify("Config Loaded", "Successfully loaded config "..configName..".json")
         else
-            Library.Notify("Config Error", "Please select a valid config", "error", 5000)
+            Library.Notify("Config Error", "Failed to load config: "..configName, "error", 5000)
         end
-    end)
-    sections.ConfigManagement:AddElement(deleteConfigButton)
+    else
+        Library.Notify("Config Error", "Please select a valid config", "error", 5000)
+    end
+end)
+sections.ConfigManagement:AddElement(elements.loadConfigButton)
 
-    local refreshConfigsButton = Button:new("Refresh List", function()
-        Library.ConfigSystem:GetConfigs()
-    end)
-    sections.ConfigManagement:AddElement(refreshConfigsButton)
-end, "Config Management 5")
+local deleteConfigButton = Button:new("Delete Config", function()
+    local configName = elements.configNameInput.value
+    if configName and configName ~= "" and configName ~= "No configs found" then
+        if Library.ConfigSystem:DeleteConfig(configName) then
+            elements.configList.options = Library.ConfigSystem:GetConfigs()
+            elements.configNameInput:Set("")
+            Library.Notify("Config Deleted", "Successfully deleted config "..configName..".json")
+        else
+            Library.Notify("Config Error", "Failed to delete config: "..configName, "error", 5000)
+        end
+    else
+        Library.Notify("Config Error", "Please select a valid config", "error", 5000)
+    end
+end)
+sections.ConfigManagement:AddElement(deleteConfigButton)
 
-QueueInitStep(function()
-    sections.Watermark = tabs.Settings:AddSection("Watermark Settings", 320, 485, 300, 160)
-        
-    elements.enableWatermark = Toggle:new("Enable Watermark", function(state)
+local refreshConfigsButton = Button:new("Refresh List", function()
+    Library.ConfigSystem:GetConfigs()
+end)
+sections.ConfigManagement:AddElement(refreshConfigsButton)
+
+sections.Watermark = tabs.Settings:AddSection("Watermark Settings", 320, 485, 300, 160)
+    
+elements.enableWatermark = Toggle:new("Enable Watermark", function(state)
+    if Library.Watermark then
+        Library.Watermark:SetVisible(state)
+    end
+end, true, "watermark_enabled")
+sections.Watermark:AddElement(elements.enableWatermark)
+
+elements.watermarkPosition = Dropdown:new("Position", 
+    {"top-right", "top-left", "bottom-right", "bottom-left"},
+    function(selected)
         if Library.Watermark then
-            Library.Watermark:SetVisible(state)
+            Library.Watermark:SetPosition(selected)
         end
-    end, true, "watermark_enabled")
-    sections.Watermark:AddElement(elements.enableWatermark)
-
-    elements.watermarkPosition = Dropdown:new("Position", 
-        {"top-right", "top-left", "bottom-right", "bottom-left"},
-        function(selected)
-            if Library.Watermark then
-                Library.Watermark:SetPosition(selected)
-            end
-        end, "top-right", "watermark_position")
-    sections.Watermark:AddElement(elements.watermarkPosition)
-end, "Watermark Settings")
-
+    end, "top-right", "watermark_position")
+sections.Watermark:AddElement(elements.watermarkPosition)
 
 local aimbot = {
     locked_target = nil,
@@ -2269,25 +2082,26 @@ local aimbot = {
     end
 }
 
-local workspace = game.get_data_model()
-local workspace_folder = workspace:find_first_child_of_class("Workspace")
-local military = workspace_folder:find_first_child("Military")
-local military_children = military and military:get_children() or {}
-local window_width, window_height = cheat.get_window_size()
-local plants_folder = workspace_folder and workspace_folder:find_first_child("Plants")
-local animals_folder = workspace_folder and workspace_folder:find_first_child("Animals")
-local nodes_folder = workspace_folder and workspace_folder:find_first_child("Nodes")
-local keycards_folder = workspace_folder and workspace_folder:find_first_child("Keycards")
-local bases_folder = workspace_folder and workspace_folder:find_first_child("Bases")
-local loners_folder = bases_folder and bases_folder:find_first_child("Loners")
-local vegetation_folder = workspace_folder and workspace_folder:find_first_child("Vegetation")
-local benchspawn_folder = workspace_folder and workspace_folder:find_first_child("BenchSpawnGroups")
-local benchspawn_children = benchspawn_folder and benchspawn_folder:get_children() or {}
-local players_instance = workspace:find_first_child("Players")
-local bags = loners_folder and loners_folder:find_first_child("Body Bag")
-local sleepers = loners_folder and loners_folder:find_first_child("Sleeper")
-local drops_folder = workspace_folder and workspace_folder:find_first_child("Drops")
+-- ESP and game world variables (optimized to avoid crashes)
+local workspace = pcall(function() return game.get_data_model() end) and game.get_data_model() or nil
+local workspace_folder = workspace and pcall(function() return workspace:find_first_child_of_class("Workspace") end) and workspace:find_first_child_of_class("Workspace") or nil
+local military = workspace_folder and pcall(function() return workspace_folder:find_first_child("Military") end) and workspace_folder:find_first_child("Military") or nil
+local military_children = military and pcall(function() return military:get_children() end) and military:get_children() or {}
+local plants_folder = workspace_folder and pcall(function() return workspace_folder:find_first_child("Plants") end) and workspace_folder:find_first_child("Plants") or nil
+local animals_folder = workspace_folder and pcall(function() return workspace_folder:find_first_child("Animals") end) and workspace_folder:find_first_child("Animals") or nil
+local nodes_folder = workspace_folder and pcall(function() return workspace_folder:find_first_child("Nodes") end) and workspace_folder:find_first_child("Nodes") or nil
+local keycards_folder = workspace_folder and pcall(function() return workspace_folder:find_first_child("Keycards") end) and workspace_folder:find_first_child("Keycards") or nil
+local bases_folder = workspace_folder and pcall(function() return workspace_folder:find_first_child("Bases") end) and workspace_folder:find_first_child("Bases") or nil
+local loners_folder = bases_folder and pcall(function() return bases_folder:find_first_child("Loners") end) and bases_folder:find_first_child("Loners") or nil
+local vegetation_folder = workspace_folder and pcall(function() return workspace_folder:find_first_child("Vegetation") end) and workspace_folder:find_first_child("Vegetation") or nil
+local benchspawn_folder = workspace_folder and pcall(function() return workspace_folder:find_first_child("BenchSpawnGroups") end) and workspace_folder:find_first_child("BenchSpawnGroups") or nil
+local benchspawn_children = benchspawn_folder and pcall(function() return benchspawn_folder:get_children() end) and benchspawn_folder:get_children() or {}
+local players_instance = workspace and pcall(function() return workspace:find_first_child("Players") end) and workspace:find_first_child("Players") or nil
+local bags = loners_folder and pcall(function() return loners_folder:find_first_child("Body Bag") end) and loners_folder:find_first_child("Body Bag") or nil
+local sleepers = loners_folder and pcall(function() return loners_folder:find_first_child("Sleeper") end) and loners_folder:find_first_child("Sleeper") or nil
+local drops_folder = workspace_folder and pcall(function() return workspace_folder:find_first_child("Drops") end) and workspace_folder:find_first_child("Drops") or nil
 
+-- Initialize game data tables safely
 local g_ores = {}
 local g_plants = {}
 local g_soldiers = {}
@@ -2301,6 +2115,20 @@ local g_sleepers = {}
 local g_bodybags = {}
 local animal_children = {}
 local g_drops = {}
+
+-- Safe window size getter
+local function getWindowSize()
+    local success, width, height = pcall(function()
+        return cheat.get_window_size()
+    end)
+    if success then
+        return width, height
+    else
+        return 1920, 1080 -- fallback
+    end
+end
+
+local window_width, window_height = getWindowSize()
 
 local function mouse_within(x, y, mx, my, w, h)
     return mx >= x and mx <= x + w and my >= y and my <= y + h
@@ -2325,29 +2153,43 @@ local function render_esp_element(items, name_key, pos_key, color, show_distance
     local local_player = entity.get_local_player()
     if not local_player then return end
     
-    local local_position = vector(local_player:get_position())
+    local success, pos_x, pos_y, pos_z = pcall(function()
+        return local_player:get_position()
+    end)
+    
+    if not success then return end
+    
+    local local_position = vector(pos_x, pos_y, pos_z)
     
     for _, item in pairs(items) do
-        local distance = local_position:dist_to(item[pos_key])
-        distance = math.floor(distance + 0.5)
+        if item[pos_key] then
+            local distance = local_position:dist_to(item[pos_key])
+            distance = math.floor(distance + 0.5)
 
-        if distance_limit < distance then goto continue end
+            if distance_limit < distance then goto continue end
 
-        local screen_pos = vector(utility.world_to_screen(item[pos_key]:unpack()))
-        if screen_pos:is_zero() then goto continue end
+            local success, screen_x, screen_y = pcall(function()
+                return utility.world_to_screen(item[pos_key]:unpack())
+            end)
+            
+            if not success or not screen_x or not screen_y or screen_x <= 0 or screen_y <= 0 then 
+                goto continue 
+            end
 
-        local clr = color
-        local w, h = render.measure_text(0, false, item[name_key])
-        local w1, h1 = render.measure_text(0, false, tostring(distance) .. "M")
+            local screen_pos = vector(screen_x, screen_y, 0)
+            local clr = color
+            local w, h = render.measure_text(0, false, item[name_key])
+            local w1, h1 = render.measure_text(0, false, tostring(distance) .. "M")
 
-        render.text(screen_pos.x - w / 2, screen_pos.y - h / 2, clr[1], clr[2], clr[3], clr[4], 0, false, item[name_key])
+            render.text(screen_pos.x - w / 2, screen_pos.y - h / 2, clr[1], clr[2], clr[3], clr[4], 0, false, item[name_key])
 
-        if show_distance then
-            render.text(screen_pos.x - w1 / 2, screen_pos.y - h1 / 2 + 7, clr[1], clr[2], clr[3], clr[4], 0, false, tostring(distance) .. "M")
-        end
+            if show_distance then
+                render.text(screen_pos.x - w1 / 2, screen_pos.y - h1 / 2 + 7, clr[1], clr[2], clr[3], clr[4], 0, false, tostring(distance) .. "M")
+            end
 
-        if tracers then
-            render.line(window_width / 2, 0, screen_pos.x, screen_pos.y, clr[1], clr[2], clr[3], clr[4], 1)
+            if tracers then
+                render.line(window_width / 2, 0, screen_pos.x, screen_pos.y, clr[1], clr[2], clr[3], clr[4], 1)
+            end
         end
         ::continue::
     end
@@ -2356,172 +2198,248 @@ end
 local function on_update_slow()
     if not ESPConfig.MainEnabled then return end
     
-    players_children = players_instance and players_instance:get_children() or {}
-    animal_children = animals_folder and animals_folder:get_children() or {}
+    -- Safe player children update
+    if players_instance then
+        local success, children = pcall(function()
+            return players_instance:get_children()
+        end)
+        if success then
+            players_children = children
+        end
+    end
+    
+    -- Safe animal children update
+    if animals_folder then
+        local success, children = pcall(function()
+            return animals_folder:get_children()
+        end)
+        if success then
+            animal_children = children
+        end
+    end
 
+    -- Safe ores update
     if ESPConfig.OresEnabled and nodes_folder then
-        g_ores = {}
-        for _, node_folder in pairs(nodes_folder:get_children()) do
-            local main = node_folder:find_first_child("Main")
-            if main then
-                g_ores[#g_ores + 1] = {
-                    name = node_folder:get_name(),
-                    pos = vector(main:get_position())
-                }
+        local success = pcall(function()
+            g_ores = {}
+            for _, node_folder in pairs(nodes_folder:get_children()) do
+                local main = node_folder:find_first_child("Main")
+                if main then
+                    local pos_x, pos_y, pos_z = main:get_position()
+                    if pos_x and pos_y and pos_z then
+                        g_ores[#g_ores + 1] = {
+                            name = node_folder:get_name(),
+                            pos = vector(pos_x, pos_y, pos_z)
+                        }
+                    end
+                end
             end
-        end
+        end)
     end
 
+    -- Safe drops update
     if ESPConfig.DropsEnabled and drops_folder then
-        g_drops = {}
-        for _, drop in pairs(drops_folder:get_children()) do
-            local mesh_part = drop:find_first_child_of_class("MeshPart")
-            if mesh_part then
-                g_drops[#g_drops + 1] = {
-                    name = drop:get_name(),
-                    pos = vector(mesh_part:get_position())
-                }
+        local success = pcall(function()
+            g_drops = {}
+            for _, drop in pairs(drops_folder:get_children()) do
+                local mesh_part = drop:find_first_child_of_class("MeshPart")
+                if mesh_part then
+                    local pos_x, pos_y, pos_z = mesh_part:get_position()
+                    if pos_x and pos_y and pos_z then
+                        g_drops[#g_drops + 1] = {
+                            name = drop:get_name(),
+                            pos = vector(pos_x, pos_y, pos_z)
+                        }
+                    end
+                end
             end
-        end
+        end)
     end
 
+    -- Safe body bags update
     if ESPConfig.BodyBagEnabled and bags then
-        g_bodybags = {}
-        for _, bag in pairs(bags:get_children()) do
-            local main = bag:find_first_child("Main")
-            if main then
-                g_bodybags[#g_bodybags + 1] = {
-                    name = "Body Bag",
-                    pos = vector(main:get_position())
-                }
+        local success = pcall(function()
+            g_bodybags = {}
+            for _, bag in pairs(bags:get_children()) do
+                local main = bag:find_first_child("Main")
+                if main then
+                    local pos_x, pos_y, pos_z = main:get_position()
+                    if pos_x and pos_y and pos_z then
+                        g_bodybags[#g_bodybags + 1] = {
+                            name = "Body Bag",
+                            pos = vector(pos_x, pos_y, pos_z)
+                        }
+                    end
+                end
             end
-        end      
+        end)
     end
 
+    -- Safe sleepers update
     if ESPConfig.SleeperEnabled and sleepers then
-        g_sleepers = {}
-        for _, sleeper in pairs(sleepers:get_children()) do
-            local sleeper_children = sleeper:get_children()
-            local player_name = ""
-            local position = vector(0, 0, 0)
+        local success = pcall(function()
+            g_sleepers = {}
+            for _, sleeper in pairs(sleepers:get_children()) do
+                local sleeper_children = sleeper:get_children()
+                local player_name = ""
+                local position = vector(0, 0, 0)
 
-            for _, child in pairs(sleeper_children) do
-                local child_name = child:get_name()
-                if child_name == "NameTag" then
-                    local label = child:find_first_child("Label")
-                    if label then
-                        player_name = label:get_textlabel_value()
+                for _, child in pairs(sleeper_children) do
+                    local child_name = child:get_name()
+                    if child_name == "NameTag" then
+                        local label = child:find_first_child("Label")
+                        if label then
+                            player_name = label:get_textlabel_value()
+                        end
+                    end
+
+                    if child_name == "Main" then
+                        local pos_x, pos_y, pos_z = child:get_position()
+                        position = vector(pos_x, pos_y, pos_z)
                     end
                 end
 
-                if child_name == "Main" then
-                    position = vector(child:get_position())
-                end
+                g_sleepers[#g_sleepers + 1] = {
+                    name = player_name,
+                    pos = position
+                }
             end
-
-            g_sleepers[#g_sleepers + 1] = {
-                name = player_name,
-                pos = position
-            }
-        end
+        end)
     end
 
+    -- Safe monument spawns update
     if ESPConfig.MonumentSpawnsEnabled and benchspawn_folder then
-        g_benchspawns = {}
-        for _, monuments in pairs(benchspawn_children) do
-            local children = monuments:get_children()
-    
-            if #children > 3 then
-                for _, drop in pairs(children) do
-                    local drop_name = drop:get_name()
-                    drop_name = string.sub(drop_name, 3)
-    
-                    g_benchspawns[#g_benchspawns + 1] = {
-                        name = drop_name,
-                        pos = vector(drop:get_position())
-                    }
+        local success = pcall(function()
+            g_benchspawns = {}
+            for _, monuments in pairs(benchspawn_children) do
+                local children = monuments:get_children()
+        
+                if #children > 3 then
+                    for _, drop in pairs(children) do
+                        local drop_name = drop:get_name()
+                        drop_name = string.sub(drop_name, 3)
+                        
+                        local pos_x, pos_y, pos_z = drop:get_position()
+                        if pos_x and pos_y and pos_z then
+                            g_benchspawns[#g_benchspawns + 1] = {
+                                name = drop_name,
+                                pos = vector(pos_x, pos_y, pos_z)
+                            }
+                        end
+                    end
                 end
             end
-        end
+        end)
     end
 
+    -- Safe dig piles update
     if ESPConfig.DigPileEnabled and vegetation_folder then
-        g_digpiles = {}
-        for _, digpiles in pairs(vegetation_folder:get_children()) do
-            local digpile_name = digpiles:get_name()
-            if digpile_name == "DigPile" then
-                local main = digpiles:find_first_child("Pos1")
-                if main then
-                    g_digpiles[#g_digpiles + 1] = {
-                        name = digpile_name,
-                        pos = vector(main:get_position())
-                    }
+        local success = pcall(function()
+            g_digpiles = {}
+            for _, digpiles in pairs(vegetation_folder:get_children()) do
+                local digpile_name = digpiles:get_name()
+                if digpile_name == "DigPile" then
+                    local main = digpiles:find_first_child("Pos1")
+                    if main then
+                        local pos_x, pos_y, pos_z = main:get_position()
+                        if pos_x and pos_y and pos_z then
+                            g_digpiles[#g_digpiles + 1] = {
+                                name = digpile_name,
+                                pos = vector(pos_x, pos_y, pos_z)
+                            }
+                        end
+                    end
                 end
             end
-        end
+        end)
     end
 
+    -- Safe keycards update
     if ESPConfig.KeycardEnabled and keycards_folder then
-        g_keycards = {}
-        for _, keycard in pairs(keycards_folder:get_children()) do
-            local main = keycard:find_first_child("Main")
-            if main then
-                g_keycards[#g_keycards + 1] = {
-                    name = "Keycard",
-                    pos = vector(main:get_position())
-                }
+        local success = pcall(function()
+            g_keycards = {}
+            for _, keycard in pairs(keycards_folder:get_children()) do
+                local main = keycard:find_first_child("Main")
+                if main then
+                    local pos_x, pos_y, pos_z = main:get_position()
+                    if pos_x and pos_y and pos_z then
+                        g_keycards[#g_keycards + 1] = {
+                            name = "Keycard",
+                            pos = vector(pos_x, pos_y, pos_z)
+                        }
+                    end
+                end
             end
-        end
+        end)
     end
 
+    -- Safe plants update
     if ESPConfig.PlantsEnabled and plants_folder then
-        g_plants = {}
-        for _, plant_folder in pairs(plants_folder:get_children()) do
-            local main = plant_folder:find_first_child("Main")
-            if main then
-                g_plants[#g_plants + 1] = {
-                    name = plant_folder:get_name(),
-                    pos = vector(main:get_position())
-                }
+        local success = pcall(function()
+            g_plants = {}
+            for _, plant_folder in pairs(plants_folder:get_children()) do
+                local main = plant_folder:find_first_child("Main")
+                if main then
+                    local pos_x, pos_y, pos_z = main:get_position()
+                    if pos_x and pos_y and pos_z then
+                        g_plants[#g_plants + 1] = {
+                            name = plant_folder:get_name(),
+                            pos = vector(pos_x, pos_y, pos_z)
+                        }
+                    end
+                end
             end
-        end
+        end)
     end
 end
 
 local function on_update()
     if not ESPConfig.MainEnabled then return end
     
+    -- Safe animals update
     if ESPConfig.AnimalsEnabled and animals_folder then
-        g_animals = {}
-        for _, node_folder in pairs(animal_children) do
-            local main = node_folder:find_first_child("HumanoidRootPart")
-            if main then
-                local full_name = node_folder:get_name()
-                local animal_name = full_name:sub(15):lower()
-                animal_name = animal_name:sub(1, 1):upper() .. animal_name:sub(2)
-                g_animals[#g_animals + 1] = {
-                    name = animal_name,
-                    pos = vector(main:get_position())
-                }
-            end
-        end
-    end
-    
-    if ESPConfig.SoldiersEnabled and military then
-        g_soldiers = {}
-        for _, bases in pairs(military_children) do
-            for _, soldier_folder in pairs(bases:get_children()) do
-                if soldier_folder:get_name() == "Soldier" then
-                    local main = soldier_folder:find_first_child("HumanoidRootPart")
-                    if main then
-                        g_soldiers[#g_soldiers + 1] = {
-                            name = "Soldier",
-                            pos = vector(main:get_position())
+        local success = pcall(function()
+            g_animals = {}
+            for _, node_folder in pairs(animal_children) do
+                local main = node_folder:find_first_child("HumanoidRootPart")
+                if main then
+                    local full_name = node_folder:get_name()
+                    local animal_name = full_name:sub(15):lower()
+                    animal_name = animal_name:sub(1, 1):upper() .. animal_name:sub(2)
+                    
+                    local pos_x, pos_y, pos_z = main:get_position()
+                    if pos_x and pos_y and pos_z then
+                        g_animals[#g_animals + 1] = {
+                            name = animal_name,
+                            pos = vector(pos_x, pos_y, pos_z)
                         }
                     end
                 end
             end
-        end
+        end)
+    end
+    
+    -- Safe soldiers update
+    if ESPConfig.SoldiersEnabled and military then
+        local success = pcall(function()
+            g_soldiers = {}
+            for _, bases in pairs(military_children) do
+                for _, soldier_folder in pairs(bases:get_children()) do
+                    if soldier_folder:get_name() == "Soldier" then
+                        local main = soldier_folder:find_first_child("HumanoidRootPart")
+                        if main then
+                            local pos_x, pos_y, pos_z = main:get_position()
+                            if pos_x and pos_y and pos_z then
+                                g_soldiers[#g_soldiers + 1] = {
+                                    name = "Soldier",
+                                    pos = vector(pos_x, pos_y, pos_z)
+                                }
+                            end
+                        end
+                    end
+                end
+            end
+        end)
     end
 end
 
@@ -2546,7 +2464,9 @@ local function draw_container(x, y, text)
         local player_name = player:get_name()
         local text_size = vector(render.measure_text(2, false, player_name))
 
-        if contains(mods_names, player_name) then
+        -- Check against mod names if they exist
+        local mods_names = _G.mods_names or {}
+        if find_in_table(mods_names, player_name) then
             render.text(x, (y + height + 2) + y_offset, text_clr[1], text_clr[2], text_clr[3], text_clr[4], 2, false, player_name)
             y_offset = y_offset + text_size.y
         end
@@ -2561,305 +2481,361 @@ local function on_paint()
     local local_player = entity.get_local_player()
     if not local_player then return end
     
-    local local_position = vector(local_player:get_position())
+    local success, pos_x, pos_y, pos_z = pcall(function()
+        return local_player:get_position()
+    end)
+    
+    if not success then return end
+    
+    local local_position = vector(pos_x, pos_y, pos_z)
     local mouse_pos = vector(input.cursor_position())
 
+    -- Safe ores rendering
     if ESPConfig.OresEnabled then
-        for _, ore in pairs(g_ores) do
-            local ore_name = ore.name
-            local should_render = isItemSelected(ore_name, ESPConfig.SelectedOres)
-            
-            if should_render then
-                local color = ESPConfig.Colors.Stone
+        pcall(function()
+            for _, ore in pairs(g_ores) do
+                local ore_name = ore.name
+                local should_render = isItemSelected(ore_name, ESPConfig.SelectedOres)
                 
-                if string.find(ore_name:lower(), "stone") then
-                    color = ESPConfig.Colors.Stone
-                elseif string.find(ore_name:lower(), "metal") then
-                    color = ESPConfig.Colors.Metal
-                elseif string.find(ore_name:lower(), "phosphate") then
-                    color = ESPConfig.Colors.Phosphate
-                end
-                
-                local distance = local_position:dist_to(ore.pos)
-                distance = math.floor(distance + 0.5)
+                if should_render then
+                    local color = ESPConfig.Colors.Stone
+                    
+                    if string.find(ore_name:lower(), "stone") then
+                        color = ESPConfig.Colors.Stone
+                    elseif string.find(ore_name:lower(), "metal") then
+                        color = ESPConfig.Colors.Metal
+                    elseif string.find(ore_name:lower(), "phosphate") then
+                        color = ESPConfig.Colors.Phosphate
+                    end
+                    
+                    local distance = local_position:dist_to(ore.pos)
+                    distance = math.floor(distance + 0.5)
 
-                if ESPConfig.OresDistance >= distance then
-                    local screen_pos = vector(utility.world_to_screen(ore.pos:unpack()))
-                    if not screen_pos:is_zero() then
-                        local w, h = render.measure_text(0, false, ore_name)
-                        local w1, h1 = render.measure_text(0, false, tostring(distance) .. "M")
+                    if ESPConfig.OresDistance >= distance then
+                        local screen_x, screen_y = utility.world_to_screen(ore.pos:unpack())
+                        if screen_x and screen_y and screen_x > 0 and screen_y > 0 then
+                            local screen_pos = vector(screen_x, screen_y, 0)
+                            local w, h = render.measure_text(0, false, ore_name)
+                            local w1, h1 = render.measure_text(0, false, tostring(distance) .. "M")
 
-                        render.text(screen_pos.x - w / 2, screen_pos.y - h / 2, color[1], color[2], color[3], color[4], 0, false, ore_name)
+                            render.text(screen_pos.x - w / 2, screen_pos.y - h / 2, color[1], color[2], color[3], color[4], 0, false, ore_name)
 
-                        if ESPConfig.OresShowDistance then
-                            render.text(screen_pos.x - w1 / 2, screen_pos.y - h1 / 2 + 7, color[1], color[2], color[3], color[4], 0, false, tostring(distance) .. "M")
-                        end
+                            if ESPConfig.OresShowDistance then
+                                render.text(screen_pos.x - w1 / 2, screen_pos.y - h1 / 2 + 7, color[1], color[2], color[3], color[4], 0, false, tostring(distance) .. "M")
+                            end
 
-                        if ESPConfig.OresTracers then
-                            render.line(window_width / 2, 0, screen_pos.x, screen_pos.y, color[1], color[2], color[3], color[4], 1)
+                            if ESPConfig.OresTracers then
+                                render.line(window_width / 2, 0, screen_pos.x, screen_pos.y, color[1], color[2], color[3], color[4], 1)
+                            end
                         end
                     end
                 end
             end
-        end
+        end)
     end
 
+    -- Safe plants rendering
     if ESPConfig.PlantsEnabled then
-        for _, plant in pairs(g_plants) do
-            local plant_name = plant.name
-            local should_render = isItemSelected(plant_name, ESPConfig.SelectedPlants)
-            
-            if should_render then
-                local color = ESPConfig.Colors.Wool
+        pcall(function()
+            for _, plant in pairs(g_plants) do
+                local plant_name = plant.name
+                local should_render = isItemSelected(plant_name, ESPConfig.SelectedPlants)
                 
-                if string.find(plant_name:lower(), "wool") then
-                    color = ESPConfig.Colors.Wool
-                elseif string.find(plant_name:lower(), "raspberry") then
-                    color = ESPConfig.Colors.Raspberry
-                elseif string.find(plant_name:lower(), "corn") then
-                    color = ESPConfig.Colors.Corn
-                elseif string.find(plant_name:lower(), "tomato") then
-                    color = ESPConfig.Colors.Tomato
-                elseif string.find(plant_name:lower(), "blueberry") then
-                    color = ESPConfig.Colors.Blueberry
-                elseif string.find(plant_name:lower(), "lemon") then
-                    color = ESPConfig.Colors.Lemon
-                end
-                
-                local distance = local_position:dist_to(plant.pos)
-                distance = math.floor(distance + 0.5)
+                if should_render then
+                    local color = ESPConfig.Colors.Wool
+                    
+                    if string.find(plant_name:lower(), "wool") then
+                        color = ESPConfig.Colors.Wool
+                    elseif string.find(plant_name:lower(), "raspberry") then
+                        color = ESPConfig.Colors.Raspberry
+                    elseif string.find(plant_name:lower(), "corn") then
+                        color = ESPConfig.Colors.Corn
+                    elseif string.find(plant_name:lower(), "tomato") then
+                        color = ESPConfig.Colors.Tomato
+                    elseif string.find(plant_name:lower(), "blueberry") then
+                        color = ESPConfig.Colors.Blueberry
+                    elseif string.find(plant_name:lower(), "lemon") then
+                        color = ESPConfig.Colors.Lemon
+                    end
+                    
+                    local distance = local_position:dist_to(plant.pos)
+                    distance = math.floor(distance + 0.5)
 
-                if ESPConfig.PlantsDistance >= distance then
-                    local screen_pos = vector(utility.world_to_screen(plant.pos:unpack()))
-                    if not screen_pos:is_zero() then
-                        local w, h = render.measure_text(0, false, plant_name)
-                        local w1, h1 = render.measure_text(0, false, tostring(distance) .. "M")
+                    if ESPConfig.PlantsDistance >= distance then
+                        local screen_x, screen_y = utility.world_to_screen(plant.pos:unpack())
+                        if screen_x and screen_y and screen_x > 0 and screen_y > 0 then
+                            local screen_pos = vector(screen_x, screen_y, 0)
+                            local w, h = render.measure_text(0, false, plant_name)
+                            local w1, h1 = render.measure_text(0, false, tostring(distance) .. "M")
 
-                        render.text(screen_pos.x - w / 2, screen_pos.y - h / 2, color[1], color[2], color[3], color[4], 0, false, plant_name)
+                            render.text(screen_pos.x - w / 2, screen_pos.y - h / 2, color[1], color[2], color[3], color[4], 0, false, plant_name)
 
-                        if ESPConfig.PlantsShowDistance then
-                            render.text(screen_pos.x - w1 / 2, screen_pos.y - h1 / 2 + 7, color[1], color[2], color[3], color[4], 0, false, tostring(distance) .. "M")
-                        end
+                            if ESPConfig.PlantsShowDistance then
+                                render.text(screen_pos.x - w1 / 2, screen_pos.y - h1 / 2 + 7, color[1], color[2], color[3], color[4], 0, false, tostring(distance) .. "M")
+                            end
 
-                        if ESPConfig.PlantsTracers then
-                            render.line(window_width / 2, 0, screen_pos.x, screen_pos.y, color[1], color[2], color[3], color[4], 1)
+                            if ESPConfig.PlantsTracers then
+                                render.line(window_width / 2, 0, screen_pos.x, screen_pos.y, color[1], color[2], color[3], color[4], 1)
+                            end
                         end
                     end
                 end
             end
-        end
+        end)
     end
 
+    -- Safe animals rendering
     if ESPConfig.AnimalsEnabled then
-        for _, animal in pairs(g_animals) do
-            local animal_name = animal.name
-            local should_render = isItemSelected(animal_name, ESPConfig.SelectedAnimals)
-            
-            if should_render then
-                local color = ESPConfig.Colors.Deer
+        pcall(function()
+            for _, animal in pairs(g_animals) do
+                local animal_name = animal.name
+                local should_render = isItemSelected(animal_name, ESPConfig.SelectedAnimals)
                 
-                if string.find(animal_name:lower(), "deer") then
-                    color = ESPConfig.Colors.Deer
-                elseif string.find(animal_name:lower(), "wildboar") then
-                    color = ESPConfig.Colors.Wildboar
-                elseif string.find(animal_name:lower(), "wolf") then
-                    color = ESPConfig.Colors.Wolf
-                end
-                
-                local distance = local_position:dist_to(animal.pos)
-                distance = math.floor(distance + 0.5)
+                if should_render then
+                    local color = ESPConfig.Colors.Deer
+                    
+                    if string.find(animal_name:lower(), "deer") then
+                        color = ESPConfig.Colors.Deer
+                    elseif string.find(animal_name:lower(), "wildboar") then
+                        color = ESPConfig.Colors.Wildboar
+                    elseif string.find(animal_name:lower(), "wolf") then
+                        color = ESPConfig.Colors.Wolf
+                    end
+                    
+                    local distance = local_position:dist_to(animal.pos)
+                    distance = math.floor(distance + 0.5)
 
-                if ESPConfig.AnimalsDistance >= distance then
-                    local screen_pos = vector(utility.world_to_screen(animal.pos:unpack()))
-                    if not screen_pos:is_zero() then
-                        local w, h = render.measure_text(0, false, animal_name)
-                        local w1, h1 = render.measure_text(0, false, tostring(distance) .. "M")
+                    if ESPConfig.AnimalsDistance >= distance then
+                        local screen_x, screen_y = utility.world_to_screen(animal.pos:unpack())
+                        if screen_x and screen_y and screen_x > 0 and screen_y > 0 then
+                            local screen_pos = vector(screen_x, screen_y, 0)
+                            local w, h = render.measure_text(0, false, animal_name)
+                            local w1, h1 = render.measure_text(0, false, tostring(distance) .. "M")
 
-                        render.text(screen_pos.x - w / 2, screen_pos.y - h / 2, color[1], color[2], color[3], color[4], 0, false, animal_name)
+                            render.text(screen_pos.x - w / 2, screen_pos.y - h / 2, color[1], color[2], color[3], color[4], 0, false, animal_name)
 
-                        if ESPConfig.AnimalsShowDistance then
-                            render.text(screen_pos.x - w1 / 2, screen_pos.y - h1 / 2 + 7, color[1], color[2], color[3], color[4], 0, false, tostring(distance) .. "M")
-                        end
+                            if ESPConfig.AnimalsShowDistance then
+                                render.text(screen_pos.x - w1 / 2, screen_pos.y - h1 / 2 + 7, color[1], color[2], color[3], color[4], 0, false, tostring(distance) .. "M")
+                            end
 
-                        if ESPConfig.AnimalsTracers then
-                            render.line(window_width / 2, 0, screen_pos.x, screen_pos.y, color[1], color[2], color[3], color[4], 1)
+                            if ESPConfig.AnimalsTracers then
+                                render.line(window_width / 2, 0, screen_pos.x, screen_pos.y, color[1], color[2], color[3], color[4], 1)
+                            end
                         end
                     end
                 end
             end
-        end
+        end)
     end
 
+    -- Safe rendering for other ESP elements
     if ESPConfig.SoldiersEnabled then
-        render_esp_element(g_soldiers, "name", "pos", ESPConfig.Colors.Soldier, ESPConfig.SoldiersShowDistance, ESPConfig.SoldiersDistance, ESPConfig.SoldiersTracers)
+        pcall(function()
+            render_esp_element(g_soldiers, "name", "pos", ESPConfig.Colors.Soldier, ESPConfig.SoldiersShowDistance, ESPConfig.SoldiersDistance, ESPConfig.SoldiersTracers)
+        end)
     end
 
     if ESPConfig.DropsEnabled then
-        render_esp_element(g_drops, "name", "pos", ESPConfig.Colors.Drops, ESPConfig.DropsShowDistance, ESPConfig.DropsDistance, ESPConfig.DropsTracers)
+        pcall(function()
+            render_esp_element(g_drops, "name", "pos", ESPConfig.Colors.Drops, ESPConfig.DropsShowDistance, ESPConfig.DropsDistance, ESPConfig.DropsTracers)
+        end)
     end
 
     if ESPConfig.DigPileEnabled then
-        render_esp_element(g_digpiles, "name", "pos", ESPConfig.Colors.DigPile, ESPConfig.DigPileShowDistance, ESPConfig.DigPileDistance, ESPConfig.DigPileTracers)
+        pcall(function()
+            render_esp_element(g_digpiles, "name", "pos", ESPConfig.Colors.DigPile, ESPConfig.DigPileShowDistance, ESPConfig.DigPileDistance, ESPConfig.DigPileTracers)
+        end)
     end
 
     if ESPConfig.KeycardEnabled then
-        render_esp_element(g_keycards, "name", "pos", ESPConfig.Colors.Keycard, ESPConfig.KeycardShowDistance, ESPConfig.KeycardDistance, ESPConfig.KeycardTracers)
+        pcall(function()
+            render_esp_element(g_keycards, "name", "pos", ESPConfig.Colors.Keycard, ESPConfig.KeycardShowDistance, ESPConfig.KeycardDistance, ESPConfig.KeycardTracers)
+        end)
     end
 
     if ESPConfig.MonumentSpawnsEnabled then
-        render_esp_element(g_benchspawns, "name", "pos", ESPConfig.Colors.Keycard, ESPConfig.MonumentSpawnsShowDistance, ESPConfig.MonumentSpawnsDistance, ESPConfig.MonumentSpawnsTracers)
+        pcall(function()
+            render_esp_element(g_benchspawns, "name", "pos", ESPConfig.Colors.Keycard, ESPConfig.MonumentSpawnsShowDistance, ESPConfig.MonumentSpawnsDistance, ESPConfig.MonumentSpawnsTracers)
+        end)
     end
 
     if ESPConfig.SleeperEnabled then
-        render_esp_element(g_sleepers, "name", "pos", ESPConfig.Colors.Sleeper, true, ESPConfig.SleeperDistance, false)
+        pcall(function()
+            render_esp_element(g_sleepers, "name", "pos", ESPConfig.Colors.Sleeper, true, ESPConfig.SleeperDistance, false)
+        end)
     end
 
     if ESPConfig.BodyBagEnabled then
-        render_esp_element(g_bodybags, "name", "pos", ESPConfig.Colors.BodyBag, true, ESPConfig.BodyBagDistance, false)
+        pcall(function()
+            render_esp_element(g_bodybags, "name", "pos", ESPConfig.Colors.BodyBag, true, ESPConfig.BodyBagDistance, false)
+        end)
     end
 
     if ESPConfig.ModAdminViewerEnabled then
-        local test = draw_container(saved_pos.x, saved_pos.y, "Mod/Admin View")
-        if utility.key_state(0x01) and mouse_within(test.x, test.y, mouse_pos.x, mouse_pos.y, test.w, test.h) then
-            if not dragging then
-                dragging = true
-                offset.x = mouse_pos.x - test.x
-                offset.y = mouse_pos.y - test.y
+        pcall(function()
+            local test = draw_container(saved_pos.x, saved_pos.y, "Mod/Admin View")
+            if utility.key_state(0x01) and mouse_within(test.x, test.y, mouse_pos.x, mouse_pos.y, test.w, test.h) then
+                if not dragging then
+                    dragging = true
+                    offset.x = mouse_pos.x - test.x
+                    offset.y = mouse_pos.y - test.y
+                else
+                    saved_pos.x = mouse_pos.x - offset.x
+                    saved_pos.y = mouse_pos.y - offset.y
+                end
             else
-                saved_pos.x = mouse_pos.x - offset.x
-                saved_pos.y = mouse_pos.y - offset.y
+                dragging = false
             end
-        else
-            dragging = false
-        end
+        end)
     end
 end
 
+-- Main update and render loops with safety wrappers
 local windowVisible = true
 local lastInsertState = false
 local lastPlayerUpdate = 0
 
-local function SafeUpdate()
-    ManageMemory()
-    
-    if not ScriptState.initialized then
-        ProcessInitQueue()
-        return
+-- Safe UpdateInputState wrapper
+local function UpdateInputState()
+    if Library and Library.UpdateInputState then
+        Library.UpdateInputState()
     end
-        
-    SafeExecute(function()
+end
+
+local function Update()
+    pcall(function()
         if not game.is_focused() then return end
+        
         UpdateInputState()
         
-        if aimbot and AimbotConfig.enabled then
-            aimbot:update()
-        end
+        pcall(function() aimbot:update() end)
 
         if Library.TargetHUD then
-            Library.TargetHUD:Update()
+            pcall(function() Library.TargetHUD:Update() end)
         end
         
         if Library.ESP and Library.ESP.Enabled then
-            Library.ESP:Update() 
+            pcall(function() Library.ESP:Update() end)
         end
         
         if Library.Watermark then
-            Library.Watermark:Update() 
+            pcall(function() Library.Watermark:Update() end)
         end
         
-        -- Handle menu toggle
-        local currentInsertState = utility.key_state(elements.menu_keybind and elements.menu_keybind.keyCode or 0x12)
+        local currentInsertState = utility.key_state(elements.menu_keybind.keyCode or 0x12)
         if currentInsertState and not lastInsertState then
             windowVisible = not windowVisible
-            if MainWindow then
-                MainWindow.visible = windowVisible
-            end
+            MainWindow.visible = windowVisible
         end
         lastInsertState = currentInsertState
 
-        -- Update player list less frequently
         local currentTime = utility.get_tickcount()
-        if currentTime - lastPlayerUpdate > 2000 then -- Increased interval
-            if sections.MainPlayerList then
-                sections.MainPlayerList:UpdatePlayers()
-            end
+        if currentTime - lastPlayerUpdate > 1000 then
+            pcall(function()
+                if sections.MainPlayerList then
+                    sections.MainPlayerList:UpdatePlayers()
+                end
+            end)
             lastPlayerUpdate = currentTime
         end
+
+        if Library.KeybindsList and Library.KeybindsList.visible then
+            pcall(function() Library.KeybindsList:HandleInput() end)
+        end
         
-        -- Update keybinds
-        for _, keybind in ipairs(Library.AllKeybinds or {}) do
-            if keybind and keybind.UpdateState then
-                keybind:UpdateState() 
+        for _, element in ipairs(Library.SortedElements or {}) do
+            if element and element.HandleInput then
+                pcall(function() element:HandleInput() end)
             end
         end
         
-        if elements.aimbotEnabled and elements.aimbotEnabled.keybind then
+        for _, window in ipairs(Library.Windows or {}) do
+            if window and window.visible and window.HandleInput then
+                pcall(function() window:HandleInput() end)
+            end
+        end
+
+        if Library.KeybindsList and Library.KeybindsList.visible then
+            pcall(function() Library.KeybindsList:UpdatePosition() end)
+        end
+        
+        if Library.Notifications then
+            pcall(function() Library.Notifications:UpdateAll() end)
+        end
+        
+        for _, keybind in ipairs(Library.AllKeybinds or {}) do
+            pcall(function() keybind:UpdateState() end)
+        end
+
+        if Library.TargetHUD and Library.TargetHUD.visible then
+            pcall(function() Library.TargetHUD:HandleInput() end)
+        end
+        
+        if elements.aimbotEnabled.keybind then
             local currentKeyState = utility.key_state(AimbotConfig.keybind.key)
             AimbotConfig.keybind.active = currentKeyState
         end
         
-        on_update()
-    end, "Main Update")
+        pcall(on_update)
+    end)
 end
 
-local function SafeUpdateSlow()
-    if not ScriptState.initialized then return end
-    
-    SafeExecute(function()
-        on_update_slow()
-    end, "Update Slow")
-end
-
-local function SafeRender()
-    if not ScriptState.initialized then 
-        -- Show loading indicator
-        local w, h = cheat.get_window_size()
-        render.text(w/2 - 50, h/2, 255, 255, 255, 255, 2, true, "Loading...")
-        return 
-    end
-    
-    SafeExecute(function()
+local function Render()
+    pcall(function()
         if not game.is_focused() then return end
         
-        if aimbot and AimbotConfig.enabled then
-            aimbot:render()
-        end
+        pcall(function() aimbot:render() end)
         
         if Library.ESP and Library.ESP.Enabled then
-            Library.ESP:RenderPlayers() 
+            pcall(function() Library.ESP:RenderPlayers() end)
         end
         
-        on_paint()
+        pcall(on_paint)
 
         if Library.TargetHUD then
-            Library.TargetHUD:Render()
+            pcall(function() Library.TargetHUD:Render() end)
         end
         
         if Library.KeybindsList then
-            Library.KeybindsList:Render() 
+            pcall(function() Library.KeybindsList:Render() end)
+        end
+        
+        for _, window in ipairs(Library.Windows or {}) do
+            if window and window.visible and window.Render then
+                pcall(function() window:Render() end)
+            end
+        end
+
+        for _, element in ipairs(Library.SortedElements or {}) do
+            if element and element.RenderPopup and MainWindow.visible then
+                pcall(function() element:RenderPopup() end)
+            end
+            
+            if element and element.colorPicker and element.colorPicker.RenderPopup then
+                pcall(function() element.colorPicker:RenderPopup() end)
+            end
         end
 
         if Library.Watermark then
-            Library.Watermark:Render()
+            pcall(function() Library.Watermark:Render() end)
         end
 
         if Library.Notifications then
-            Library.Notifications:RenderAll()
+            pcall(function() Library.Notifications:RenderAll() end)
         end
-    end, "Main Render")
+    end)
 end
 
--- Register callbacks with error handling
-cheat.set_callback("update", SafeUpdate)
-cheat.set_callback("update_slow", SafeUpdateSlow)
-cheat.set_callback("paint", SafeRender)
-
--- Add cleanup on shutdown
-cheat.set_callback("shutdown", function()
-    SafeExecute(function()
-        if Library and Library.Cleanup then
-            Library.Cleanup()
-        end
-        collectgarbage("collect")
-    end, "Shutdown")
+-- Set up callbacks safely
+pcall(function()
+    cheat.set_callback("update", Update)
+    cheat.set_callback("update_slow", on_update_slow)
+    cheat.set_callback("paint", Render)
 end)
+
+-- Notify successful load
+pcall(function()
+    Library.Notify("Shedhook Loaded", "Fallen Survival script loaded successfully!", "info", 5000)
+end)
+
+utility.log("Shedhook Fallen Survival script loaded successfully!")
