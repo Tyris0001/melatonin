@@ -7918,7 +7918,7 @@ local function on_update_slow()
     end
 end
 
-local function on_update()
+local function get_entities()
     if not ESPConfig.MainEnabled then return end
     
     if ESPConfig.AnimalsEnabled and animals_folder then
@@ -7985,7 +7985,7 @@ local function draw_container(x, y, text)
     return {x=x, y=y, w=text_size.x + padding, h=height}
 end
 
-local function on_paint()
+local function draw_esp()
     if not ESPConfig.MainEnabled then return end
     
     local local_player = entity.get_local_player()
@@ -8171,7 +8171,7 @@ local lastPlayerUpdate = 0
 
 local function Update()
     --if not game.is_focused() then return end
-    UpdateInputState()
+
     
     aimbot:update()
 
@@ -8241,19 +8241,19 @@ local function Update()
         AimbotConfig.keybind.active = currentKeyState
     end
     
-    on_update()
+    get_entities()
 end
 
 local function Render()
     --if not game.is_focused() then return end
-    
+    UpdateInputState()
     aimbot:render()
     
     if Library.ESP and Library.ESP.Enabled then
         Library.ESP:RenderPlayers() 
     end
     
-    on_paint()
+    draw_esp()
 
     if Library.TargetHUD then
         Library.TargetHUD:Render()
