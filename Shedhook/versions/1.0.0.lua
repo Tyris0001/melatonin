@@ -4115,7 +4115,8 @@ function Slider:HandleInput()
     local trackY = y + 18
     local trackBounds = IsMouseInBounds(x, trackY, self.width, 12)
     
-    if trackBounds and InputState.mousePressed then
+    if trackBounds and (InputState.mousePressed or self.dragging) then
+        self.dragging = true
         local mouseX, mouseY = input.cursor_position()
         local percent = math.max(0, math.min(1, (mouseX - x) / self.width))
         local newValue = self.min + (self.max - self.min) * percent
@@ -4127,7 +4128,12 @@ function Slider:HandleInput()
             end
             self:RegisterInteraction()
         end
+    elseif not InputState.mousePressed then 
+        self.dragging = false
     end
+
+
+
 end
 
 function Dropdown:new(text, options, callback, defaultValue, flag)
