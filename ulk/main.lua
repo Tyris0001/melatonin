@@ -12491,6 +12491,10 @@ local aimbot = {
         return nil
     end,
     update = function(self)
+        if not self:is_active() then
+            return
+        end
+        
         self.frame_counter = (self.frame_counter or 0) + 1
         local current_time = utility.get_tickcount() / 1000
         self.last_cleanup_time = self.last_cleanup_time or 0
