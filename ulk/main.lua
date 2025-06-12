@@ -12039,7 +12039,7 @@ local aimbot = {
         end
     end,
     is_active = function(self)
-        local weapon_name = get_weapon_name()
+        local weapon_name = self:get_active_weapon()
         local config = getWeaponConfig(weapon_name)
         
         if not config.enabled then
@@ -12599,7 +12599,7 @@ local aimbot = {
             return
         end
 
-        local weapon_name = get_weapon_name()
+        local weapon_name = self:get_active_weapon()
         local config = getWeaponConfig(weapon_name)
         
         if not config.triggerbot.enabled then
@@ -12651,11 +12651,11 @@ local aimbot = {
                 if not self.triggerbot_delay_start then
                     self.triggerbot_delay_start = utility.get_tickcount()
                 elseif utility.get_tickcount() - self.triggerbot_delay_start >= config.triggerbot.delay then
-                    utility.left_click()
+                    input.mouse_click(1)
                     self.triggerbot_delay_start = nil
                 end
             else
-                utility.left_click()
+                input.mouse_click(1)
             end
         else
             self.triggerbot_delay_start = nil
@@ -12668,7 +12668,7 @@ local aimbot = {
             return 0, 0
         end
 
-        local weapon_name = get_weapon_name()
+        local weapon_name = self:get_active_weapon()
         local config = getWeaponConfig(weapon_name)
         
         if not config.rcs.enabled then
