@@ -12613,8 +12613,8 @@ local aimbot = {
         local triggerKeybind = config.triggerbot.keybind
         local currentKeyState = false
 
-        if config.triggerbot.mode == "Hold" and triggerKeybind.key and triggerKeybind.key ~= 0 then
-            currentKeyState = utility.key_state(triggerKeybind.key)
+        if config.triggerbot.mode == "Keybind" and triggerKeybind.key and triggerKeybind.key ~= 0 then
+            currentKeyState = elements.triggerbotEnabled.keybind:IsActive()
         elseif config.triggerbot.mode == "Auto" then
             currentKeyState = true
         else
@@ -12650,7 +12650,7 @@ local aimbot = {
             end
         end
 
-        if crosshairOnTarget then
+        if crosshairOnTarget and  then
             if config.triggerbot.delay > 0 then
                 if not self.triggerbot_delay_start then
                     self.triggerbot_delay_start = utility.get_tickcount()
