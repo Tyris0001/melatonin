@@ -5736,7 +5736,7 @@ function PlayerList:UpdatePlayers()
     localPlayerAdded = localPlayerData
     if entities then
         for _, player in pairs(entities) do
-            if player:is_alive() and not player:is_local_player() then
+            if not player:is_local_player() then
                 local playerName = player:get_name()
                 local status = "None"
                 if previousManualChanges[playerName] then
@@ -5744,9 +5744,9 @@ function PlayerList:UpdatePlayers()
                     self.manualStatusChanges[playerName] = status
                 else
                     if player:is_enemy() then
-                        status = "Enemy"
+                        status = player:is_alive() and "Enemy" or "Enemy (Dead)"
                     else
-                        status = "Teammate"
+                        status = player:is_alive() and "Teammate" or "Teammate (Dead)"
                     end
                 end
                 local userId = player:get_steamid()
@@ -8794,6 +8794,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -8875,6 +8879,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -8956,6 +8964,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9037,6 +9049,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9118,6 +9134,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9199,6 +9219,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9280,6 +9304,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9361,6 +9389,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9442,6 +9474,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9523,6 +9559,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9604,6 +9644,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9685,6 +9729,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9766,6 +9814,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9847,6 +9899,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -9928,6 +9984,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10009,6 +10069,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10090,6 +10154,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10171,6 +10239,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10252,6 +10324,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10333,6 +10409,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10414,6 +10494,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10495,6 +10579,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10576,6 +10664,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10657,6 +10749,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10738,6 +10834,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10819,6 +10919,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10900,6 +11004,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -10981,6 +11089,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -11062,6 +11174,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -11143,6 +11259,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -11224,6 +11344,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -11305,6 +11429,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -11386,6 +11514,10 @@ local AimbotConfig = {
                 },
                 delay = 50,
                 magnet = false,
+                magnetOptions = {
+                    allowFlashed = false,
+                    allowSmoke = false
+                },
                 teamCheck = true,
                 mode = "Hold"
             },
@@ -12613,19 +12745,50 @@ local aimbot = {
         local triggerKeybind = config.triggerbot.keybind
         local currentKeyState = false
 
-        if config.triggerbot.mode == "Keybind" and triggerKeybind.key and triggerKeybind.key ~= 0 then
-            currentKeyState = elements.triggerbotEnabled.keybind:IsActive()
-        elseif config.triggerbot.mode == "Auto" then
-            currentKeyState = true
+        -- Check if triggerbot should be active based on keybind mode
+        if elements.triggerbotEnabled.keybind then
+            local keybindMode = elements.triggerbotEnabled.keybind.mode
+            local keyState = elements.triggerbotEnabled.keybind:IsActive()
+            
+            if keybindMode == "Always" then
+                currentKeyState = config.triggerbot.enabled
+            elseif keybindMode == "Hold" then
+                currentKeyState = config.triggerbot.enabled and keyState
+            elseif keybindMode == "Toggle" then
+                -- For Toggle mode, both the toggle AND the keybind must be active
+                currentKeyState = config.triggerbot.enabled and keyState and elements.triggerbotEnabled.keybind.toggled
+            end
         else
-            currentKeyState = true
+            -- Fallback to old logic if keybind object not available
+            if config.triggerbot.mode == "Keybind" and triggerKeybind.key and triggerKeybind.key ~= 0 then
+                currentKeyState = elements.triggerbotEnabled.keybind and elements.triggerbotEnabled.keybind:IsActive()
+            elseif config.triggerbot.mode == "Auto" then
+                currentKeyState = config.triggerbot.enabled
+            else
+                currentKeyState = config.triggerbot.enabled
+            end
         end
 
         if not currentKeyState then
             return
         end
 
+        -- Check for flash and smoke conditions
+        local isFlashed = self:isPlayerFlashed(local_player)
+        local isSmokeBlocking = self:isSmokeBlocking(local_player)
+        
+        if isFlashed and not config.triggerbot.magnetOptions.allowFlashed then
+            return
+        end
+        
+        if isSmokeBlocking and not config.triggerbot.magnetOptions.allowSmoke then
+            return
+        end
+
         local crosshairOnTarget = false
+        local magnetTarget = nil
+        
+        -- Regular crosshair-based triggering
         local crosshair_entity_index = memory.read_int(local_player.pawn + offsets.m_iIDEntIndex)
         
         if crosshair_entity_index > 0 then
@@ -12649,21 +12812,130 @@ local aimbot = {
                 end
             end
         end
+        
+        -- Magnetization logic - check for enemies in FOV when magnet is enabled
+        if config.triggerbot.magnet and not crosshairOnTarget and not self.triggerbot_magnet_cooldown then
+            local entities = get_entities()
+            if entities then
+                for _, player in pairs(entities) do
+                    if player and not player:is_local_player() and player:is_alive() then
+                        local entity_team = player:get_team()
+                        local local_team = local_player:get_team()
+                        
+                        -- Team check for magnet
+                        local isValidTarget = false
+                        if config.triggerbot.teamCheck then
+                            isValidTarget = (entity_team ~= local_team)
+                        else
+                            isValidTarget = true
+                        end
+                        
+                        if isValidTarget then
+                            -- Check if enemy is within FOV
+                            local target_pos = player:get_position()
+                            local local_pos = local_player:get_position()
+                            local local_angles = local_player:get_view_angles()
+                            
+                            if target_pos and local_pos and local_angles then
+                                local angle_to_target = self:calculate_angle(local_pos, target_pos)
+                                local fov_distance = self:get_fov_distance(local_angles, angle_to_target)
+                                
+                                -- Use aimbot FOV for magnet detection
+                                local weaponConfig = getWeaponConfig(weapon_name)
+                                local maxFOV = weaponConfig.fov or 5.0
+                                
+                                if fov_distance <= maxFOV then
+                                    magnetTarget = player
+                                    crosshairOnTarget = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
 
-        if crosshairOnTarget and  then
+        -- Fire logic
+        if crosshairOnTarget then
             if config.triggerbot.delay > 0 then
                 if not self.triggerbot_delay_start then
                     self.triggerbot_delay_start = utility.get_tickcount()
                 elseif utility.get_tickcount() - self.triggerbot_delay_start >= config.triggerbot.delay then
                     input.mouse_click(1)
                     self.triggerbot_delay_start = nil
+                    
+                    -- If magnet was used, disable it temporarily until key is released and pressed again
+                    if magnetTarget and config.triggerbot.magnet then
+                        self.triggerbot_magnet_cooldown = true
+                    end
                 end
             else
                 input.mouse_click(1)
+                
+                -- If magnet was used, disable it temporarily until key is released and pressed again
+                if magnetTarget and config.triggerbot.magnet then
+                    self.triggerbot_magnet_cooldown = true
+                end
             end
         else
             self.triggerbot_delay_start = nil
         end
+        
+        -- Reset magnet cooldown when key is released
+        if not currentKeyState and self.triggerbot_magnet_cooldown then
+            self.triggerbot_magnet_cooldown = nil
+        end
+    end,
+
+    -- Helper function to check if player is flashed
+    isPlayerFlashed = function(self, player)
+        if not player or not player.pawn then
+            return false
+        end
+        
+        -- Check flash alpha value (when flashed, this value is > 0)
+        local flashAlpha = memory.read_float(player.pawn + offsets.m_flFlashBangTime) or 0
+        return flashAlpha > 0
+    end,
+
+    -- Helper function to check if smoke is blocking the view
+    isSmokeBlocking = function(self, player)
+        if not player or not player.pawn then
+            return false
+        end
+        
+        -- This is a simplified smoke detection
+        -- In a full implementation, you'd check for smoke grenades between player and crosshair position
+        -- For now, we'll use a basic check that can be improved
+        local smokeCheckRadius = 100 -- units
+        local localPos = player:get_position()
+        
+        if not localPos then
+            return false
+        end
+        
+        -- Get all entities and check for smoke grenades
+        local entities = get_entities()
+        if entities then
+            for _, entity in pairs(entities) do
+                if entity and entity:get_class_name() == "smokegrenade_projectile" then
+                    local smokePos = entity:get_position()
+                    if smokePos then
+                        local distance = math.sqrt(
+                            (localPos.x - smokePos.x)^2 + 
+                            (localPos.y - smokePos.y)^2 + 
+                            (localPos.z - smokePos.z)^2
+                        )
+                        if distance <= smokeCheckRadius then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+        
+        return false
     end,
 
     rcs = function(self)
@@ -12778,6 +13050,18 @@ elements.triggerbotTeamCheck = Toggle:new("Team Check", function(state)
 end, AimbotConfig.weapons["Default"].triggerbot.teamCheck, "triggerbot_team_check")
 sections.Prediction:AddElement(elements.triggerbotTeamCheck, 1)
 
+elements.triggerbotAllowFlashed = Toggle:new("Allow When Flashed", function(state)
+    ensureWeaponConfig(AimbotConfig.configWeapon)
+    AimbotConfig.weapons[AimbotConfig.configWeapon].triggerbot.magnetOptions.allowFlashed = state
+end, AimbotConfig.weapons["Default"].triggerbot.magnetOptions.allowFlashed, "triggerbot_allow_flashed")
+sections.Prediction:AddElement(elements.triggerbotAllowFlashed, 1)
+
+elements.triggerbotAllowSmoke = Toggle:new("Allow Through Smoke", function(state)
+    ensureWeaponConfig(AimbotConfig.configWeapon)
+    AimbotConfig.weapons[AimbotConfig.configWeapon].triggerbot.magnetOptions.allowSmoke = state
+end, AimbotConfig.weapons["Default"].triggerbot.magnetOptions.allowSmoke, "triggerbot_allow_smoke")
+sections.Prediction:AddElement(elements.triggerbotAllowSmoke, 1)
+
 -- RCS elements
 elements.rcsEnabled = Toggle:new("RCS Enabled", function(state)
     ensureWeaponConfig(AimbotConfig.configWeapon)
@@ -12866,6 +13150,8 @@ function updateAllElements()
     elements.triggerbotMagnet:Set(config.triggerbot.magnet)
     elements.triggerbotMode:Set(config.triggerbot.mode)
     elements.triggerbotTeamCheck:Set(config.triggerbot.teamCheck)
+    elements.triggerbotAllowFlashed:Set(config.triggerbot.magnetOptions.allowFlashed)
+    elements.triggerbotAllowSmoke:Set(config.triggerbot.magnetOptions.allowSmoke)
 
     -- Update RCS elements
     elements.rcsEnabled:Set(config.rcs.enabled)
